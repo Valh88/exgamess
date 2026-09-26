@@ -221,9 +221,10 @@ class Room {
 			case JoinRoom(data):
 				joined = true;
 				retry = 0;
-				sendBuffer = [];
 				reservation.sessionId = data.get("session_id");
 				reservation.reconnectionToken = data.get("reconnection_token");
+				// сначала обработчики (их send-ы встанут в буфер, если что-то
+				// не так), затем flush — накопленное до join уходит серверу
 				onJoin.dispatch({data: data});
 				flushBuffer();
 

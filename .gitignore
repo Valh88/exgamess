@@ -31,3 +31,4 @@ erl_crash.dump
 /.jitted_scripts
 /.zcode
 .zcodeignore
+sdk/gamessa/.gamessa_storage.json

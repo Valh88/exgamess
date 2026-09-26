@@ -84,6 +84,8 @@ class WebSocketTransport implements ITransport {
 	}
 
 	public function isOpen():Bool {
-		return _open && _ws.state == hx.ws.State.Body;
+		// hx.ws на sys-таргетах после рукопожатия остаётся в State.Head
+		// (Body там не наступает), поэтому ориентируемся на свой флаг
+		return _open;
 	}
 }

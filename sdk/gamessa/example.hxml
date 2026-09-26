@@ -1,8 +1,10 @@
-# Сборка чат-примера. Запуск под neko: haxe example.hxml && neko bin/example.n
+# Сборка чат-примера (сервер: `PORT=4100 mix phx.server` в корне репозитория).
+# Цель указывается при сборке:
 -cp source
 -cp example
 -main example.Main
 -lib hxWebSockets
 
-# JS для браузера: haxe example.hxml -js bin/example/main.js
--neko bin/example.n
+# HashLink: haxe example.hxml -hl bin/example.hl   && hl bin/example.hl
+# Neko:     haxe example.hxml -neko bin/example.n  && neko bin/example.n
+# JS:       haxe example.hxml -js bin/example/main.js
