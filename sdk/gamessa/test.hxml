@@ -1,0 +1,8 @@
+# Юнит-тесты gamessa (utest). Запуск: haxe test.hxml
+-cp source
+-cp test
+-main RunTests
+-lib utest
+
+# interp (eval) — без внешних зависимостей; для node: замените на --js bin/RunTests.js + node bin/RunTests.js
+--interp
