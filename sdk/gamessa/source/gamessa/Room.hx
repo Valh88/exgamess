@@ -83,6 +83,15 @@ class Room {
 	/** Таймаут request/1 по умолчанию, мс. */
 	public var requestTimeoutMs:Int = 10_000;
 
+	/**
+		Интервал keepalive-PING, мс (0 — выключить). Сервер закрывает WS без
+		данных от клиента (WebSockAdapter `timeout: 60_000` в WsController),
+		поэтому SDK по умолчанию шлёт PING каждые 25с — таймер сбрасывается и
+		соединение не рвётся во время простоя. Держите меньше серверного
+		таймаута и таймаутов NAT/прокси.
+	*/
+	public var keepAliveMs:Int = 25_000;
+
 	// ------------------------------------------------------------------
 	// Внутреннее
 	// ------------------------------------------------------------------
@@ -227,6 +236,7 @@ class Room {
 				// не так), затем flush — накопленное до join уходит серверу
 				onJoin.dispatch({data: data});
 				flushBuffer();
+				armKeepAlive();
 
 			case RoomData(type, payload):
 				onMessage.dispatch({type: type, message: payload});
@@ -274,6 +284,7 @@ class Room {
 
 		// не-согласованный обрыв: попытки reconnect по токену
 		joined = false;
+		stopKeepAlive();
 		onDrop.dispatch(null);
 
 		if (reservation.reconnectionToken == null) {
@@ -343,10 +354,42 @@ class Room {
 	// ------------------------------------------------------------------
 
 	var pingHandlers:Array<Float->Void> = [];
+	var keepAliveTimer:Null<haxe.Timer>;
+
+	/**
+		Keepalive: раз в keepAliveMs шлёт PING, сбрасывая таймер неактивности
+		сервера (и NAT/прокси). Пока ждётся ответ ручного ping(), не мешаем.
+		Таймер живёт в потоке, обработавшем JoinRoom (главном при marshaling).
+	*/
+	function armKeepAlive():Void {
+		stopKeepAlive();
+		if (keepAliveMs <= 0)
+			return;
+
+		keepAliveTimer = haxe.Timer.delay(() -> {
+			if (!joined || disposed || leaving)
+				return;
+
+			if (connection.isOpen()) {
+				if (pingHandlers.length == 0)
+					queueOrSend(Wire.encode(Ping));
+				armKeepAlive();
+			}
+			// если isOpen() == false, handleClose вот-вот запустит reconnect
+		}, keepAliveMs);
+	}
+
+	function stopKeepAlive():Void {
+		if (keepAliveTimer != null) {
+			keepAliveTimer.stop();
+			keepAliveTimer = null;
+		}
+	}
 
 	function dispose():Void {
 		disposed = true;
 		joined = false;
+		stopKeepAlive();
 		sendBuffer = [];
 
 		for (cb in pending) {

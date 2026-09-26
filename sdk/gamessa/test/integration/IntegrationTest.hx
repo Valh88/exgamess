@@ -275,6 +275,31 @@ class IntegrationTest extends utest.Test {
 
 		async.setTimeout(15000);
 	}
+
+	function testKeepAliveKeepsIdleConnection(async:Async):Void {
+		var client = makeClient();
+
+		newUser(client, 'hx_${Std.int(Math.random() * 1000000)}', () -> {
+			joinChat(client, room -> {
+				// ускоренный keepalive: 6 пингов за время простоя
+				room.keepAliveMs = 200;
+
+				room.onJoin.add(_ -> {
+					// 1.2с без сообщений — сервер без keepalive мог бы считать
+					// соединение мёртвым; затем канал обязан отвечать
+					haxe.Timer.delay(() -> {
+						room.request("history", {}, res -> {
+							Assert.notNull(res);
+							room.leave();
+							async.done();
+						}, err -> Assert.fail('request after idle failed: $err'));
+					}, 1200);
+				});
+			});
+		});
+
+		async.setTimeout(15000);
+	}
 }
 
 /** In-memory storage для тестов (токен живёт в рамках клиента). */

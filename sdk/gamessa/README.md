@@ -75,9 +75,15 @@ client.register("ann", "secret123", auth -> {
 | `leave(?consented)` | покинуть комнату (кадр `LEAVE_ROOM`) |
 
 Свойства reconnect: `reconnectDelayMs` (100), `reconnectMaxDelayMs` (5000),
-`maxRetries` (15) — экспоненциальный backoff; после исчерпания — `onLeave`
-с кодом 4003. Токен ротируется сервером при каждом переподключении
-(как в Colyseus) и обновляется в `room.reconnectionToken`.
+`maxRetries` (15) — экспоненциальный backoff **после обрыва** (сам по себе
+reconnect не периодический); после исчерпания — `onLeave` с кодом 4003.
+Токен ротируется сервером при каждом переподключении (как в Colyseus) и
+обновляется в `room.reconnectionToken`.
+
+Keepalive: `keepAliveMs` (25с, 0 — выключить). Сервер закрывает WS, если от
+клиента нет данных 60с (`timeout` в `WsController`), поэтому SDK сама шлёт
+PING — соединение не рвётся во время простоя. Держите интервал меньше
+серверного таймаута и таймаутов NAT/прокси.
 
 ### Reconnect-флоу
 
