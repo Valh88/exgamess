@@ -1,6 +1,6 @@
 defmodule ExGames.Account do
   @moduledoc """
-  Аккаунты: регистрация, вход, токены, роли (RBAC), баны.
+  Аккаунты: регистрация, вход, токены, роли (RBAC), баны, рейтинги (Elo).
 
   Основной API:
 
@@ -8,6 +8,7 @@ defmodule ExGames.Account do
       {:ok, token} = Account.login("ann", "secret1")
       {:ok, user}  = Account.authenticate(token)
       Account.has_role?(user, :admin)
+      Account.record_match("arena", %{1 => :win, 2 => :loss})
   """
 
   import Ecto.Query
@@ -16,6 +17,10 @@ defmodule ExGames.Account do
   alias ExGames.Account.Role
   alias ExGames.Account.Token
   alias ExGames.Account.User
+  alias ExGames.Account.Rating
+  alias ExGames.Account.MatchResult
+
+  @k_factor 32
 
   @typedoc "Результат операции аккаунта."
   @type result(type) :: {:ok, type} | {:error, term()}
@@ -204,4 +209,111 @@ defmodule ExGames.Account do
 
   defp check_not_banned(%User{banned_at: nil}), do: :ok
   defp check_not_banned(%User{}), do: {:error, :banned}
+
+  # -+
+  # Рейтинги (Elo)
+  # -------------------------------------------------------------------------
+
+  @doc "Рейтинг игрока в игре; `:error`, если матчей ещё не было."
+  @spec get_rating(integer(), String.t()) :: {:ok, integer()} | :error
+  def get_rating(user_id, game \\ "default") when is_integer(user_id) do
+    case Repo.get_by(Rating, user_id: user_id, game: game) do
+      nil -> :error
+      %Rating{} = row -> {:ok, row.rating}
+    end
+  end
+
+  @doc """
+  Фиксирует результат матча и пересчитывает рейтинги (Elo, K=32).
+
+      Account.record_match("arena", %{1 => :win, 2 => :loss, 3 => :draw})
+
+  `results` — `%{user_id => :win | :loss | :draw}`. Каждый участник
+  «играет против каждого»: новый рейтинг = old + K/(n−1) · Σ(S − E),
+  где S — фактический исход (1/0.5/0), E — ожидание по Elo. Неизвестный
+  `user_id` — `{:error, {:unknown_user, id}}`. Возвращает
+  `{:ok, %{user_id => новый_рейтинг}}`.
+  """
+  @spec record_match(String.t(), %{integer() => :win | :loss | :draw}) ::
+          {:ok, %{integer() => integer()}} | {:error, term()}
+  def record_match(game, results) when is_binary(game) and is_map(results) do
+    with :ok <- validate_results(results),
+         {:ok, new_ratings} <-
+           Repo.transaction(fn ->
+             rows = fetch_rows!(game, Map.keys(results))
+             new_ratings = elo_new_ratings(rows, results)
+
+             Enum.each(rows, fn row ->
+               Repo.update!(
+                 Rating.changeset(row, %{
+                   rating: Map.fetch!(new_ratings, row.user_id),
+                   wins: row.wins + outcome_count(row.user_id, results, :win),
+                   losses: row.losses + outcome_count(row.user_id, results, :loss),
+                   draws: row.draws + outcome_count(row.user_id, results, :draw)
+                 })
+               )
+             end)
+
+             Repo.insert!(
+               MatchResult.changeset(%MatchResult{}, %{
+                 game: game,
+                 results:
+                   Map.new(results, fn {uid, outcome} ->
+                     {to_string(uid), to_string(outcome)}
+                   end)
+               })
+             )
+
+             new_ratings
+           end),
+         do: {:ok, new_ratings}
+  end
+
+  defp validate_results(results) do
+    if map_size(results) < 2 do
+      {:error, :need_two_players}
+    else
+      Enum.find_value(results, :ok, fn
+        {uid, outcome} when is_integer(uid) and outcome in [:win, :loss, :draw] -> nil
+        bad -> {:error, {:bad_result, bad}}
+      end)
+    end
+  end
+
+  defp fetch_rows!(game, user_ids) do
+    Enum.map(user_ids, fn uid ->
+      unless Repo.get(User, uid), do: Repo.rollback({:unknown_user, uid})
+
+      Repo.get_by(Rating, user_id: uid, game: game) ||
+        Repo.insert!(Rating.changeset(%Rating{}, %{user_id: uid, game: game}))
+    end)
+  end
+
+  defp elo_new_ratings(rows, results) do
+    uids = Map.keys(results)
+    n = length(uids)
+    rating = Map.new(rows, fn row -> {row.user_id, row.rating} end)
+
+    deltas =
+      for a <- uids, b <- uids, a != b, reduce: Map.new(uids, fn uid -> {uid, 0.0} end) do
+        acc ->
+          s = score(Map.get(results, a), Map.get(results, b))
+          e = 1 / (1 + :math.pow(10, (rating[b] - rating[a]) / 400))
+          Map.update!(acc, a, &(&1 + s - e))
+      end
+
+    Map.new(uids, fn uid ->
+      {uid, round(Map.fetch!(rating, uid) + @k_factor / (n - 1) * Map.fetch!(deltas, uid))}
+    end)
+  end
+
+  # очки a против b
+  defp score(same, same), do: 0.5
+  defp score(:win, _b), do: 1.0
+  defp score(:draw, _b), do: 0.5
+  defp score(:loss, _b), do: 0.0
+
+  defp outcome_count(uid, results, outcome) do
+    if Map.get(results, uid) == outcome, do: 1, else: 0
+  end
 end

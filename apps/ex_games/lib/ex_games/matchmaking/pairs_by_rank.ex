@@ -36,6 +36,8 @@ defmodule ExGames.Matchmaking.PairsByRank do
 
   alias ExGames.Matchmaker
 
+  @default_rank 1000
+
   @impl true
   def logic_init(options, room) do
     {:ok,
@@ -49,25 +51,29 @@ defmodule ExGames.Matchmaking.PairsByRank do
      }}
   end
 
-  # Ранг приплывает в auth: либо сервер сам положил его туда (например,
-  # рейтинг из БД при брони — клиент не может соврать), либо из опций join.
-  # Серверное значение имеет приоритет над клиентским.
+  # Ранг приплывает в auth: сервер может положить его сам (доверенное
+  # значение), клиент — только в опциях join (`"rank_source": "options"`).
+  # Приоритет разрешения в logic_join: auth-ранг → RankSource (серверное
+  # хранилище) → клиентские опции → 1000.
   @impl true
   def logic_auth(auth_data, options, _room) do
     auth = auth_data || %{}
 
-    case auth do
-      %{"rank" => _} ->
+    cond do
+      Map.has_key?(auth, "rank") ->
         {:ok, auth}
 
-      _ ->
-        {:ok, Map.put(auth, "rank", Map.get(options || %{}, "rank", 1000))}
+      rank = Map.get(options || %{}, "rank") ->
+        {:ok, auth |> Map.put("rank", rank) |> Map.put("rank_source", "options")}
+
+      true ->
+        {:ok, auth}
     end
   end
 
   @impl true
   def logic_join(room, client, auth, state) do
-    rank = rank_from(auth)
+    rank = resolve_rank(auth, state)
 
     broadcast(room, "queue_join", %{"session_id" => client.session_id, "rank" => rank})
 
@@ -146,8 +152,10 @@ defmodule ExGames.Matchmaking.PairsByRank do
   end
 
   defp start_match(state, group) do
+    # game = тип матч-комнаты: стратегия записи рейтингов использует его как
+    # ключ игры (см. RankSource.rating/2)
     with {:ok, reservation} <-
-           Matchmaker.create(state.match_room_name, %{}, %{}) do
+           Matchmaker.create(state.match_room_name, %{}, %{"game" => state.match_room_name}) do
       # первый участник уже имеет бронь (reserve при create); бронируем остальных
       Enum.each(group, fn {sid, _info} ->
         :ok = ExGames.Room.Server.reserve_seat(reservation.room_id, sid, %{}, %{})
@@ -182,11 +190,49 @@ defmodule ExGames.Matchmaking.PairsByRank do
     end
   end
 
-  defp rank_from(auth) do
+  # -------------------------------------------------------------------------
+  # Разрешение ранга: auth-ранг (доверенный) → RankSource (серверное
+  # хранилище рейтингов) → клиентские опции → 1000.
+  # -------------------------------------------------------------------------
+
+  defp resolve_rank(auth, state) do
     case auth do
-      %{"rank" => rank} when is_integer(rank) -> rank
-      %{"rank" => rank} when is_binary(rank) -> String.to_integer(rank)
-      _ -> 1000
+      %{"rank_source" => "options", "rank" => rank} ->
+        # клиентский ранг: серверное хранилище имеет приоритет
+        fallback(rank_source(auth, state), parse_rank(rank))
+
+      %{"rank" => rank} ->
+        parse_rank(rank)
+
+      _ ->
+        fallback(rank_source(auth, state), @default_rank)
     end
   end
+
+  defp rank_source(auth, state) do
+    case Application.get_env(:ex_games, :rank_source) do
+      mod when is_atom(mod) ->
+        try do
+          case mod.rating(auth["user_id"], state.match_room_name) do
+            {:ok, rank} when is_integer(rank) -> rank
+            rank when is_integer(rank) -> rank
+            _ -> :error
+          end
+        rescue
+          _ -> :error
+        end
+
+      _ ->
+        :error
+    end
+  end
+
+  defp fallback(:error, default) when is_integer(default), do: default
+  defp fallback(rank, _default) when is_integer(rank), do: rank
+
+  defp parse_rank(rank) when is_integer(rank), do: rank
+  defp parse_rank(rank) when is_binary(rank), do: String.to_integer(rank)
+
+  defp parse_rank(rank) when is_integer(rank), do: rank
+  defp parse_rank(rank) when is_binary(rank), do: String.to_integer(rank)
 end

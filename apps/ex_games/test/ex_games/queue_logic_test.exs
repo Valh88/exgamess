@@ -151,6 +151,56 @@ defmodule ExGames.QueueLogicTest do
     assert %{rank: 2000} = logic_state(pid).waiting[sid2]
   end
 
+  describe "rank source (серверное хранилище рейтингов)" do
+    setup do
+      Application.put_env(:ex_games, :rank_source, QueueTestRankSource)
+
+      on_exit(fn -> Application.delete_env(:ex_games, :rank_source) end)
+
+      :ok
+    end
+
+    test "server rank wins over client-declared options rank", %{room_id: room_id, room_pid: pid} do
+      sid = ExGames.Id.session_id()
+      :ok = Server.reserve_seat(room_id, sid, %{"user_id" => 7}, %{"rank" => 50})
+      FakeTransport.attach!(room_id, sid)
+
+      assert %{rank: 1234} = logic_state(pid).waiting[sid]
+    end
+
+    test "source rank applies without options", %{room_id: room_id, room_pid: pid} do
+      sid = ExGames.Id.session_id()
+      :ok = Server.reserve_seat(room_id, sid, %{"user_id" => 7}, %{})
+      FakeTransport.attach!(room_id, sid)
+
+      assert %{rank: 1234} = logic_state(pid).waiting[sid]
+    end
+
+    test "source :error falls back to options rank", %{room_id: room_id, room_pid: pid} do
+      sid = ExGames.Id.session_id()
+      :ok = Server.reserve_seat(room_id, sid, %{"user_id" => 8}, %{"rank" => 77})
+      FakeTransport.attach!(room_id, sid)
+
+      assert %{rank: 77} = logic_state(pid).waiting[sid]
+    end
+
+    test "source crash is treated as :error", %{room_id: room_id, room_pid: pid} do
+      sid = ExGames.Id.session_id()
+      :ok = Server.reserve_seat(room_id, sid, %{"user_id" => 9}, %{"rank" => 55})
+      FakeTransport.attach!(room_id, sid)
+
+      assert %{rank: 55} = logic_state(pid).waiting[sid]
+    end
+
+    test "trusted auth rank beats the source", %{room_id: room_id, room_pid: pid} do
+      sid = ExGames.Id.session_id()
+      :ok = Server.reserve_seat(room_id, sid, %{"user_id" => 7, "rank" => 3000}, %{})
+      FakeTransport.attach!(room_id, sid)
+
+      assert %{rank: 3000} = logic_state(pid).waiting[sid]
+    end
+  end
+
   test "leaving the queue removes the player from matchmaking", %{room_id: room_id, room_pid: pid} do
     {sid1, t1} = join!(room_id, 1000)
     {sid2, t2} = join!(room_id, 1010)
@@ -175,4 +225,15 @@ defmodule ExGames.QueueLogicTest do
 
     for payload <- seat_frames(t3), do: flunk("leaver got a seat: #{inspect(payload)}")
   end
+end
+
+# Фейковый источник серверных рангов для тестов приоритетов.
+defmodule QueueTestRankSource do
+  @behaviour ExGames.Matchmaking.RankSource
+
+  @impl true
+  def rating(7, _game), do: {:ok, 1234}
+  def rating(8, _game), do: :error
+  def rating(9, _game), do: raise("source exploded")
+  def rating(_uid, _game), do: :error
 end

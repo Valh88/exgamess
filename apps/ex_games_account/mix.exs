@@ -28,6 +28,8 @@ defmodule ExGames.Account.MixProject do
 
   defp deps do
     [
+      # Контракт RankSource (серверные ранги для подбора) + umbrella-ядро.
+      {:ex_games, in_umbrella: true},
       # Ecto + адаптер SQLite (переход на Postgres = смена адаптера и конфига).
       {:ecto_sql, "~> 3.12"},
       {:ecto_sqlite3, ">= 0.18.0"},

@@ -20,14 +20,17 @@ import Config
 # ----------------------------------------------------------------------------
 config :ex_games_account, ecto_repos: [ExGames.Account.Repo]
 
-# Абсолютный путь от config/ — umbrella запускает тесты каждой аппки со своим
-# cwd, относительные пути давали бы «две разные базы».
+# Единый файл БД аккаунтов и рейтингов ядра: FK рейтингов ссылается на
+# `users`. Абсолютный путь от config/ — umbrella запускает тесты каждой
+# аппки со своим cwd, относительные пути давали бы «две разные базы».
+db_path =
+  Path.expand(
+    "../apps/ex_games_account/priv/repo/#{config_env()}.sqlite3",
+    __DIR__
+  )
+
 config :ex_games_account, ExGames.Account.Repo,
-  database:
-    Path.expand(
-      "../apps/ex_games_account/priv/repo/#{config_env()}.sqlite3",
-      __DIR__
-    ),
+  database: db_path,
   # WAL + immediate-транзакции: меньше гонок «database is locked».
   journal_mode: :wal,
   default_transaction_mode: :immediate,
@@ -41,6 +44,13 @@ config :ex_games_account, :token,
 config :ex_games_account, :seeds,
   admin_username: System.get_env("EX_GAMES_ADMIN_USERNAME", "admin"),
   admin_password: System.get_env("EX_GAMES_ADMIN_PASSWORD", "admin123123")
+
+# ----------------------------------------------------------------------------
+# ex_games — ядро: источник серверных рангов для подбора
+# ----------------------------------------------------------------------------
+# Реализация RankSource на рейтингах аккаунтов (Elo). Отключить — удалить
+# строку: тогда стратегии подбора возьмут клиентский ранг из опций.
+config :ex_games, :rank_source, ExGames.Account.RankSource
 
 # ----------------------------------------------------------------------------
 # ex_games_web — Phoenix (Bandit): REST + WebSocket + LiveView (буд. админка)
