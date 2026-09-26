@@ -275,6 +275,43 @@ class IntegrationTest extends utest.Test {
 		async.setTimeout(15000);
 	}
 
+	function testReconnectRejectedImmediatelyWhenTokenInvalid(async:Async):Void {
+		var client = makeClient();
+
+		newUser(client, 'hx_${Std.int(Math.random() * 1000000)}', () -> {
+			client.joinOrCreate("chat", {channel: "global"}, reservation -> {
+				var room = client.connectRoom(reservation);
+				// бюджет ретраев заведомо неисчерпаем за таймаут теста:
+				// 1000 попыток заняли бы ~минуты
+				room.maxRetries = 1000;
+				room.reconnectDelayMs = 10;
+				room.reconnectMaxDelayMs = 10;
+
+				var dropped = false;
+				room.onDrop.add(_ -> dropped = true);
+
+				room.onJoin.add(e -> {
+					if (!dropped) {
+						// подменяем токен на невалидный: после обрыва сервер
+						// ответит 522 (аналог «комната исчезла после
+						// перезапуска сервера») — ретраи бессмысленны
+						reservation.reconnectionToken = "bogus0123456789012345678901234567890";
+						haxe.Timer.delay(() -> room.connection.close(), 100);
+					}
+				});
+
+				room.onLeave.add(e -> {
+					Assert.equals(gamessa.wire.Wire.CLOSE_RECONNECT_TIMEOUT, e.code);
+					// окончательный отказ — без ожидания исчерпания попыток
+					Assert.isTrue(StringTools.startsWith(e.reason, "reconnect rejected"));
+					async.done();
+				});
+			}, err -> Assert.fail('joinOrCreate failed: $err'));
+		});
+
+		async.setTimeout(10000);
+	}
+
 	function testConnectTimeout(async:Async):Void {
 		var client = makeClient();
 

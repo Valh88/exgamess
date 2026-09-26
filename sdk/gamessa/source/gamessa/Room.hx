@@ -314,6 +314,14 @@ class Room {
 					openReconnectTransport(res);
 				},
 				err -> {
+					// окончательный отказ (комната/токен не существуют) —
+					// ретраи бессмысленны, завершаем сразу
+					if (isPermanentReconnectError(err)) {
+						dispose();
+						onLeave.dispatch({code: Wire.CLOSE_RECONNECT_TIMEOUT, reason: 'reconnect rejected: ${err.message}'});
+						return;
+					}
+
 					retry++;
 					if (retry >= maxRetries) {
 						dispose();
@@ -323,6 +331,13 @@ class Room {
 					}
 				});
 		}, delay);
+	}
+
+	/** Отказ сервера, при котором повторять reconnect бессмысленно. */
+	static function isPermanentReconnectError(err:MatchMakeError):Bool {
+		return err.code == Wire.ERR_UNKNOWN_ROOM_TYPE
+			|| err.code == Wire.ERR_NO_ROOM
+			|| err.code == Wire.ERR_UNKNOWN_ROOM;
 	}
 
 	function openReconnectTransport(res:SeatReservation):Void {
