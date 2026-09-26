@@ -80,6 +80,29 @@ defmodule ExGames.Matchmaker do
     GenServer.call(__MODULE__, {:join, room_name, auth_data, options}, 10_000)
   end
 
+  @doc """
+  Присоединиться к комнате по конкретному `room_id` (без поиска по типу).
+  Комната может быть и не из матчмейкера (`room_name` брони будет `nil`).
+  """
+  @spec join_by_id(Id.id(), term(), map()) ::
+          {:ok, reservation()} | {:error, :unknown_room | :locked | :full | term()}
+  def join_by_id(room_id, auth_data, options \\ %{}) do
+    session_id = Id.session_id()
+
+    case Server.reserve_seat(room_id, session_id, auth_data, options) do
+      :ok ->
+        {:ok,
+         %__MODULE__.Reservation{
+           room_name: room_name_for(room_id),
+           room_id: room_id,
+           session_id: session_id
+         }}
+
+      {:error, _reason} = err ->
+        err
+    end
+  end
+
   @doc "Листинг комнат заданного типа (для лобби)."
   @spec query(String.t()) :: {:ok, [map()]} | {:error, :unknown_room_type}
   def query(room_name) do
@@ -361,6 +384,16 @@ defmodule ExGames.Matchmaker do
       {:error, _reason} = err ->
         err
     end
+  end
+
+  # Имя типа комнаты из листинга ETS (nil для комнат вне матчмейкера).
+  defp room_name_for(room_id) do
+    case :ets.lookup(@ets, room_id) do
+      [{_, listing}] -> Map.get(listing, :room_name)
+      _ -> nil
+    end
+  rescue
+    _ -> nil
   end
 end
 

@@ -39,6 +39,9 @@ defmodule ExGames.Room do
       `handle_tick/2` (если определён) и рассылает состояние при изменении.
     * `:auto_dispose` — закрывать комнату, когда клиентов нет (по умолчанию `true`).
     * `:rate_limit` — максимум сообщений от клиента в секунду (по умолчанию `120`).
+    * `:reconnect_ttl` — окно переподключения после не-согласованного обрыва
+      транспорта, мс (по умолчанию `30_000`; `false`/`0` — отключить: обрыв
+      сразу вызывает `handle_leave`).
     * `:logic` — список модулей `ExGames.Room.Logic`, встраиваемых в комнату
       (логика игры отдельно от оболочки; см. `ExGames.Room.Logic`).
 
@@ -121,7 +124,8 @@ defmodule ExGames.Room do
     max_clients: 8,
     patch_rate: 50,
     auto_dispose: true,
-    rate_limit: 120
+    rate_limit: 120,
+    reconnect_ttl: 30_000
   ]
 
   @doc false

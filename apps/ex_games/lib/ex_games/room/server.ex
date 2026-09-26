@@ -9,7 +9,12 @@ defmodule ExGames.Room.Server do
     * `reserve_seat/5` — бронь места (двухфазный join, шаг 1);
     * `attach/4` — подключение транспорта к забронированному месту (шаг 2);
     * `client_frame/3` — входящий кадр от клиента;
-    * `detach/2` — согласованное отключение.
+    * `detach/2` — согласованное отключение;
+    * `drop/2` — не-согласованный обрыв транспорта (клиент попадает в слот
+      reconnection на `:reconnect_ttl`, по умолчанию 30 секунд);
+    * `reattach/4` — повторное подключение транспорта по `reconnection_token`
+      (без повторного join в логиках);
+    * `reconnect/3` — проверка reconnection-токена (HTTP-шаг reconnect-флоу).
 
   Кадры пушатся транспорту сообщением `{:ex_games_push, frame}`, закрытие —
   `{:ex_games_closed, code, message}`. Коды закрытия — как в Colyseus:
@@ -25,6 +30,8 @@ defmodule ExGames.Room.Server do
 
   require Logger
 
+  @reconnect_ttl 30_000
+
   @typedoc "Внутреннее состояние сервера комнаты."
   @type t :: %__MODULE__{
           room_id: Id.id(),
@@ -37,6 +44,7 @@ defmodule ExGames.Room.Server do
           clients: %{Id.id() => Client.t()},
           monitors: %{Id.id() => reference()},
           reserved: %{Id.id() => %{auth: term(), options: map(), timer: reference()}},
+          reconnecting: %{Id.id() => {Id.id(), reference()}},
           rate: %{Id.id() => {non_neg_integer(), integer()}},
           game_state: term() | nil,
           state_dirty: boolean(),
@@ -57,6 +65,7 @@ defmodule ExGames.Room.Server do
             clients: %{},
             monitors: %{},
             reserved: %{},
+            reconnecting: %{},
             rate: %{},
             game_state: nil,
             state_dirty: false,
@@ -120,6 +129,42 @@ defmodule ExGames.Room.Server do
     GenServer.call(via(room_id), {:attach, session_id, pid, options})
   catch
     :exit, _ -> {:error, :unknown_room}
+  end
+
+  @doc """
+  Возвращает транспорт клиента после не-согласованного обрыва (шаг 2
+  reconnect-флоу). Токен должен совпадать со слотом reconnection; `session_id`
+  клиента сохраняется, логики НЕ получают join повторно. Клиенту уходит
+  `join_room` с НОВЫМ `reconnection_token` (ротация, как в Colyseus) и
+  полный снапшот состояния.
+  """
+  @spec reattach(Id.id(), Id.id(), pid(), Id.id()) ::
+          {:ok, Wire.frame(), Wire.frame() | nil} | {:error, :invalid_token | :unknown_room}
+  def reattach(room_id, session_id, pid, reconnection_token) do
+    GenServer.call(via(room_id), {:reattach, session_id, pid, reconnection_token})
+  catch
+    :exit, _ -> {:error, :unknown_room}
+  end
+
+  @doc """
+  Проверяет reconnection-токен (шаг 1 reconnect-флоу, HTTP-эндпоинт
+  `POST /matchmake/reconnect/:room_id`). Возвращает `{:ok, session_id}`
+  либо `{:error, :invalid_token | :unknown_room}`.
+  """
+  @spec reconnect(Id.id(), Id.id() | nil, Id.id()) ::
+          {:ok, Id.id()} | {:error, :invalid_token | :unknown_room}
+  def reconnect(room_id, session_id, reconnection_token) do
+    GenServer.call(via(room_id), {:reconnect, session_id, reconnection_token})
+  catch
+    :exit, _ -> {:error, :unknown_room}
+  end
+
+  @doc "Транспорт потерян без согласия клиента (обрыв сети, краш сокета)."
+  @spec drop(Id.id(), Id.id()) :: :ok
+  def drop(room_id, session_id) do
+    GenServer.cast(via(room_id), {:client_left, session_id, :closed})
+  rescue
+    _ -> :ok
   end
 
   @doc "Передаёт в комнату сырой кадр от клиента."
@@ -225,6 +270,7 @@ defmodule ExGames.Room.Server do
             session_id: session_id,
             pid: pid,
             auth: seat.auth,
+            reconnection_token: Id.token(),
             joined_at: DateTime.utc_now()
           }
 
@@ -241,7 +287,11 @@ defmodule ExGames.Room.Server do
                   }
 
                   join_frame =
-                    Wire.encode(:join_room, %{"room_id" => state.room_id, "session_id" => session_id})
+                    Wire.encode(:join_room, %{
+                      "room_id" => state.room_id,
+                      "session_id" => session_id,
+                      "reconnection_token" => client.reconnection_token
+                    })
 
                   push(pid, join_frame)
                   state_frame = push_state_snapshot(pid, state)
@@ -266,6 +316,68 @@ defmodule ExGames.Room.Server do
               {:stop, {:shutdown, {:join_rejected, session_id, reason}}, state}
           end
         end
+    end
+  end
+
+  def handle_call({:reattach, session_id, pid, token}, _from, %__MODULE__{} = state) do
+    case Map.pop(state.reconnecting, token) do
+      {nil, _} ->
+        {:reply, {:error, :invalid_token}, state}
+
+      {{slot_session_id, timer}, reconnecting} when slot_session_id != session_id ->
+        # чужой session_id — слот возвращаем на место
+        {:reply, {:error, :invalid_token},
+         %__MODULE__{state | reconnecting: Map.put(reconnecting, token, {slot_session_id, timer})}}
+
+      {{^session_id, timer}, reconnecting} ->
+        Process.cancel_timer(timer)
+
+        case Map.fetch(state.clients, session_id) do
+          :error ->
+            {:reply, {:error, :invalid_token}, %__MODULE__{state | reconnecting: reconnecting}}
+
+          {:ok, %Client{} = client} ->
+            # подмена транспорта: старый монитор демонтируем, логики не трогаем
+            state = drop_monitor(state, session_id)
+            ref = Process.monitor(pid)
+
+            # ротация токена (как в Colyseus): каждое переподключение получает новый
+            client = %Client{client | pid: pid, reconnection_token: Id.token()}
+
+            state = %__MODULE__{
+              state
+              | reconnecting: reconnecting,
+                clients: Map.put(state.clients, session_id, client),
+                monitors: Map.put(state.monitors, session_id, ref)
+            }
+
+            join_frame =
+              Wire.encode(:join_room, %{
+                "room_id" => state.room_id,
+                "session_id" => session_id,
+                "reconnection_token" => client.reconnection_token
+              })
+
+            push(pid, join_frame)
+            state_frame = push_state_snapshot(pid, state)
+
+            :telemetry.execute([:ex_games, :room, :rejoin], %{count: map_size(state.clients)}, %{
+              room_id: state.room_id,
+              module: state.module
+            })
+
+            {:reply, {:ok, join_frame, state_frame}, state}
+        end
+    end
+  end
+
+  def handle_call({:reconnect, session_id, token}, _from, %__MODULE__{} = state) do
+    case Map.get(state.reconnecting, token) do
+      {slot_session_id, _timer} when is_nil(session_id) or slot_session_id == session_id ->
+        {:reply, {:ok, slot_session_id}, state}
+
+      _ ->
+        {:reply, {:error, :invalid_token}, state}
     end
   end
 
@@ -380,6 +492,13 @@ defmodule ExGames.Room.Server do
   def handle_cast({:set_state, wire_state}, %__MODULE__{} = state),
     do: {:noreply, %__MODULE__{state | game_state: wire_state, state_dirty: true}}
 
+  def handle_cast({:client_left, session_id, :closed}, state) do
+    case Map.get(state.clients, session_id) do
+      nil -> {:noreply, state}
+      client -> move_to_reconnecting(state, client, :closed)
+    end
+  end
+
   def handle_cast({:client_left, session_id, reason}, state) do
     case Map.get(state.clients, session_id) do
       nil -> {:noreply, state}
@@ -394,15 +513,31 @@ defmodule ExGames.Room.Server do
 
 
   @impl true
-  def handle_info({:DOWN, ref, :process, _pid, exit_reason}, state) do
+  def handle_info({:DOWN, ref, :process, _pid, _exit_reason}, state) do
     case Enum.find(state.monitors, fn {_sid, r} -> r == ref end) do
       {session_id, _} ->
-        client = Map.fetch!(state.clients, session_id)
-        reason = if exit_reason in [:normal, :shutdown], do: :closed, else: :crashed
-        remove_client(state, client, reason, 4000, "transport closed")
+        case Map.get(state.clients, session_id) do
+          nil -> {:noreply, state}
+          client -> move_to_reconnecting(state, client, :closed)
+        end
 
       nil ->
         {:noreply, state}
+    end
+  end
+
+  def handle_info({:reconnect_expired, token}, %__MODULE__{} = state) do
+    case Map.pop(state.reconnecting, token) do
+      {nil, _} ->
+        {:noreply, state}
+
+      {{session_id, _timer}, reconnecting} ->
+        state = %__MODULE__{state | reconnecting: reconnecting}
+
+        case Map.get(state.clients, session_id) do
+          nil -> {:noreply, state}
+          client -> remove_client(state, client, :closed, 4000, "reconnect timeout")
+        end
     end
   end
 
@@ -666,15 +801,8 @@ defmodule ExGames.Room.Server do
   end
 
   defp remove_client(%__MODULE__{} = state, client, reason, close_code, message) do
-    state =
-      case Map.pop(state.monitors, client.session_id) do
-        {nil, _} ->
-          state
-
-        {ref, monitors} ->
-          Process.demonitor(ref, [:flush])
-          %__MODULE__{state | monitors: monitors}
-      end
+    state = clear_reconnect_slot(state, client.session_id)
+    state = drop_monitor(state, client.session_id)
 
     state = %__MODULE__{
       state
@@ -714,6 +842,69 @@ defmodule ExGames.Room.Server do
       {:stop, :normal, state}
     else
       {:noreply, state}
+    end
+  end
+
+  # Не-согласованный обрыв: клиент остаётся в комнате (место занято), слот
+  # reconnection ждёт reattach до :reconnect_ttl. Отключённая опция или
+  # уже существующий слот → обычное удаление / no-op.
+  defp move_to_reconnecting(%__MODULE__{} = state, client, reason) do
+    state = drop_monitor(state, client.session_id)
+
+    cond do
+      Enum.any?(state.reconnecting, fn {_t, {sid, _}} -> sid == client.session_id end) ->
+        {:noreply, state}
+
+      not reconnect_enabled?(state) ->
+        remove_client(state, client, reason, 4000, "transport closed")
+
+      true ->
+        timer =
+          Process.send_after(
+            self(),
+            {:reconnect_expired, client.reconnection_token},
+            reconnect_ttl(state)
+          )
+
+        state = %__MODULE__{
+          state
+          | reconnecting:
+              Map.put(state.reconnecting, client.reconnection_token, {client.session_id, timer})
+        }
+
+        {:noreply, state}
+    end
+  end
+
+  defp reconnect_ttl(%__MODULE__{} = state) do
+    case Keyword.get(state.options, :reconnect_ttl, @reconnect_ttl) do
+      ttl when is_integer(ttl) and ttl > 0 -> ttl
+      _ -> @reconnect_ttl
+    end
+  end
+
+  defp reconnect_enabled?(state),
+    do: Keyword.get(state.options, :reconnect_ttl, @reconnect_ttl) not in [false, 0]
+
+  defp clear_reconnect_slot(%__MODULE__{} = state, session_id) do
+    Enum.reduce(state.reconnecting, state, fn {token, {sid, timer}}, %__MODULE__{} = acc ->
+      if sid == session_id do
+        Process.cancel_timer(timer)
+        %__MODULE__{acc | reconnecting: Map.delete(acc.reconnecting, token)}
+      else
+        acc
+      end
+    end)
+  end
+
+  defp drop_monitor(%__MODULE__{} = state, session_id) do
+    case Map.pop(state.monitors, session_id) do
+      {nil, _} ->
+        state
+
+      {ref, monitors} ->
+        Process.demonitor(ref, [:flush])
+        %__MODULE__{state | monitors: monitors}
     end
   end
 
@@ -815,11 +1006,17 @@ defmodule ExGames.Room.Server do
   end
 
   defp close_all(%__MODULE__{} = state, code, message) do
+    Enum.each(state.reconnecting, fn {_token, {_sid, timer}} -> Process.cancel_timer(timer) end)
+
     state.clients
     |> Map.values()
     |> Enum.each(fn client ->
       push_close(client.pid, code, message)
-      Process.demonitor(Map.get(state.monitors, client.session_id), [:flush])
+
+      case Map.get(state.monitors, client.session_id) do
+        nil -> :ok
+        ref -> Process.demonitor(ref, [:flush])
+      end
     end)
   end
 
