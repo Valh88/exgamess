@@ -1,0 +1,13 @@
+
+{
+	"name": "gamessa",
+	"license": "MIT",
+	"tags": ["haxe", "client", "sdk"],
+	"description": "haxe client sdk for exgamessa",
+	"version": "0.1.0",
+	"releasenote": "",
+	"contributors": ["vano"],
+	"dependencies": {
+	},
+	"classPath": "source"
+}

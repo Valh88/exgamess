@@ -1,0 +1,9 @@
+-cp source
+-cp example
+-main example.Main
+
+# -lib utest
+--js bin/example/Main.js
+# --interp
+# --cmd command
+# haxelib run formatter -s src   
