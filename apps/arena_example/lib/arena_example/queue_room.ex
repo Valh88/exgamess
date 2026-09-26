@@ -40,7 +40,7 @@ defmodule ArenaExample.QueueRoom do
 
   @impl true
   def handle_tick(_dt, state) do
-    now = System.monotonic_time(:millisecond)
+    _now = System.monotonic_time(:millisecond)
 
     # сортируем по рангу, собираем полные группы
     queue =
