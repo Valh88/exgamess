@@ -1,10 +1,11 @@
-# Сборка чат-примера (сервер: `PORT=4100 mix phx.server` в корне репозитория).
-# Цель указывается при сборке:
+# Сборка чат-примера (сервер: `mix phx.server` в корне репозитория;
+# эндпоинт можно передать аргументом: hl bin/example.hl http://127.0.0.1:4000)
 -cp source
 -cp example
 -main example.Main
 -lib hxWebSockets
 
-# HashLink: haxe example.hxml -hl bin/example.hl   && hl bin/example.hl
+# HashLink (основной, собирается этой командой):
+-hl bin/example.hl
 # Neko:     haxe example.hxml -neko bin/example.n  && neko bin/example.n
 # JS:       haxe example.hxml -js bin/example/main.js

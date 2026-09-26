@@ -19,25 +19,29 @@ import haxe.ds.StringMap;
 	Интерактив: `<текст>` — сказать в канал, `/quit` — выйти.
 */
 class Main {
-	static final ENDPOINT = "http://127.0.0.1:4100";
+	static final DEFAULT_ENDPOINT = "http://127.0.0.1:4100";
 
 	static function main() {
+		// эндпоинт можно передать первым аргументом:
+		//   hl bin/example.hl http://127.0.0.1:4000
+		var endpoint = #if (js && !nodejs) DEFAULT_ENDPOINT #else (Sys.args().length > 0 ? Sys.args()[0] : DEFAULT_ENDPOINT) #end;
+
 		#if (hl || eval)
 		// Главный поток получает event loop и живёт, пока его не остановит
 		// Sys.exit в fail()/onLeave. Колбэки из фоновых потоков (HTTP, WS)
 		// маршалим в него: haxe.Timer на sys-таргетах требует event loop
 		// потока, а reconnect-логика Room на нём построена.
-		sys.thread.Thread.runWithEventLoop(start);
+		sys.thread.Thread.runWithEventLoop(() -> start(endpoint));
 		#elseif sys
-		start();
+		start(endpoint);
 		while (true)
 			Sys.sleep(0.1); // живём до Sys.exit в fail()/onLeave
 		#else
-		start();
+		start(endpoint);
 		#end
 	}
 
-	static function start():Void {
+	static function start(endpoint:String):Void {
 		#if sys
 		var pending:Array<Void->Void> = [];
 		var lock = new sys.thread.Mutex();
@@ -51,8 +55,8 @@ class Main {
 
 		var username = "haxe_" + Std.int(Math.random() * 100000);
 		var password = "secret123";
-		var client = new Client(ENDPOINT);
-		trace('gamessa chat demo → $ENDPOINT (user: $username)');
+		var client = new Client(endpoint);
+		trace('gamessa chat demo → $endpoint (user: $username)');
 
 		client.register(username, password, auth -> {
 			trace("registered, token received");

@@ -230,6 +230,51 @@ class IntegrationTest extends utest.Test {
 
 		async.setTimeout(10000);
 	}
+
+	function testConnectFailureIsAsyncAndReconnectable(async:Async):Void {
+		var client = makeClient();
+
+		newUser(client, 'hx_${Std.int(Math.random() * 1000000)}', () -> {
+			client.joinOrCreate("chat", {channel: "global"}, reservation -> {
+				// мёртвый порт: connect завершится отказом, не блокируя поток
+				var dead = new gamessa.transport.WebSocketTransport("ws://127.0.0.1:1/dead?sessionId=x");
+				var room = client.connectRoom(reservation, dead);
+
+				var dropped = false;
+				room.onDrop.add(_ -> dropped = true);
+				room.onLeave.add(e -> {
+					Assert.isTrue(dropped);
+					// токена ещё нет (join не состоялся) — reconnect невозможен,
+					// Room завершает канал кодом 4003
+					Assert.equals(gamessa.wire.Wire.CLOSE_RECONNECT_TIMEOUT, e.code);
+					async.done();
+				});
+			}, err -> Assert.fail('joinOrCreate failed: $err'));
+		});
+
+		async.setTimeout(15000);
+	}
+
+	function testConnectTimeout(async:Async):Void {
+		var client = makeClient();
+
+		newUser(client, 'hx_${Std.int(Math.random() * 1000000)}', () -> {
+			client.joinOrCreate("chat", {channel: "global"}, reservation -> {
+				// немаршрутизируемый адрес: коннект висит или отваливается сам —
+				// watchdog обязан завершить попытку за connectTimeoutMs
+				var stuck = new gamessa.transport.WebSocketTransport("ws://10.255.255.1:4100/stuck?sessionId=x");
+				stuck.connectTimeoutMs = 700;
+				var room = client.connectRoom(reservation, stuck);
+
+				room.onLeave.add(e -> {
+					Assert.equals(gamessa.wire.Wire.CLOSE_RECONNECT_TIMEOUT, e.code);
+					async.done();
+				});
+			}, err -> Assert.fail('joinOrCreate failed: $err'));
+		});
+
+		async.setTimeout(15000);
+	}
 }
 
 /** In-memory storage для тестов (токен живёт в рамках клиента). */
