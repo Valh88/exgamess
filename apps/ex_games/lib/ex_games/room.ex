@@ -39,6 +39,8 @@ defmodule ExGames.Room do
       `handle_tick/2` (если определён) и рассылает состояние при изменении.
     * `:auto_dispose` — закрывать комнату, когда клиентов нет (по умолчанию `true`).
     * `:rate_limit` — максимум сообщений от клиента в секунду (по умолчанию `120`).
+    * `:logic` — список модулей `ExGames.Room.Logic`, встраиваемых в комнату
+      (логика игры отдельно от оболочки; см. `ExGames.Room.Logic`).
 
   ## Колбэки
 
@@ -137,8 +139,7 @@ defmodule ExGames.Room do
         only: [message: 6, request: 6, broadcast: 3, send_to: 4, kick: 2, lock: 1,
                unlock: 1, set_metadata: 2, set_state: 2, clients: 1, count: 1]
 
-      Module.register_attribute(__MODULE__, :ex_games_message_clauses, accumulate: true)
-      Module.register_attribute(__MODULE__, :ex_games_request_clauses, accumulate: true)
+      ExGames.Room.DSL.register_attributes(__MODULE__)
 
       @ex_games_options Keyword.merge(ExGames.Room.default_options(), opts)
 
@@ -205,53 +206,18 @@ defmodule ExGames.Room do
   end
 
   defmacro __before_compile__(env) do
-    message_clauses =
-      Module.get_attribute(env.module, :ex_games_message_clauses)
-      |> Enum.reverse()
-      |> Enum.map(fn %{type: type, pattern: pattern, body: body, room: r, client: c, state: s} ->
-        quote do
-          def handle_message(
-                unquote(Macro.var(r, nil)),
-                unquote(Macro.var(c, nil)),
-                unquote(type),
-                unquote(pattern),
-                unquote(Macro.var(s, nil))
-              ) do
-            unquote(body)
-          end
-        end
-      end)
-
-    request_clauses =
-      Module.get_attribute(env.module, :ex_games_request_clauses)
-      |> Enum.reverse()
-      |> Enum.map(fn %{type: type, pattern: pattern, body: body, room: r, client: c, state: s} ->
-        quote do
-          def handle_request(
-                unquote(Macro.var(r, nil)),
-                unquote(Macro.var(c, nil)),
-                request_id,
-                unquote(type),
-                unquote(pattern),
-                unquote(Macro.var(s, nil))
-              ) do
-            unquote(body)
-          end
-        end
-      end)
-
     quote do
-      unquote_splicing(message_clauses)
+      unquote_splicing(ExGames.Room.DSL.generate_message_defs(env))
 
       # Неизвестные сообщения игнорируются (с телеметрией на стороне сервера).
-      def handle_message(_room, _client, _type, _payload, state), do: {:ok, state}
+      unquote_splicing(ExGames.Room.DSL.generate_message_catch_all())
 
-      unquote_splicing(request_clauses)
+      unquote_splicing(ExGames.Room.DSL.generate_request_defs(env))
 
       # Неизвестные запросы: ошибка клиенту, состояние без изменений.
-      def handle_request(_room, _client, request_id, _type, _payload, state) do
-        {:error, "unknown request", state}
-      end
+      unquote_splicing(ExGames.Room.DSL.generate_request_catch_all())
+
+      unquote_splicing(ExGames.Room.DSL.generate_type_introspection(env))
     end
   end
 

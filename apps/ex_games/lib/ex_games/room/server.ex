@@ -41,6 +41,7 @@ defmodule ExGames.Room.Server do
           game_state: term() | nil,
           state_dirty: boolean(),
           user_state: term(),
+          logics: [{module(), term()}],
           tick_timer: reference() | nil,
           last_tick: integer()
         }
@@ -60,6 +61,7 @@ defmodule ExGames.Room.Server do
             game_state: nil,
             state_dirty: false,
             user_state: nil,
+            logics: [],
             tick_timer: nil,
             last_tick: 0
 
@@ -173,48 +175,35 @@ defmodule ExGames.Room.Server do
       {:ok, user_state} ->
         create_options = Keyword.get(opts, :options, %{})
 
-        state = %__MODULE__{
-          room_id: room_id,
-          room_name: Keyword.get(opts, :room_name),
-          module: module,
-          handle: handle,
-          options: options,
-          max_clients: Keyword.get(options, :max_clients, 8),
-          # create-опции (в т.ч. filter_by-ключи) — публичные метаданные листинга
-          metadata: create_options,
-          user_state: user_state,
-          last_tick: System.monotonic_time(:millisecond)
-        }
+        case init_logics(Keyword.get(options, :logic, []), create_options, handle, []) do
+          {:ok, logics} ->
+            state = %__MODULE__{
+              room_id: room_id,
+              room_name: Keyword.get(opts, :room_name),
+              module: module,
+              handle: handle,
+              options: options,
+              max_clients: Keyword.get(options, :max_clients, 8),
+              # create-опции (в т.ч. filter_by-ключи) — публичные метаданные листинга
+              metadata: create_options,
+              user_state: user_state,
+              logics: logics,
+              last_tick: System.monotonic_time(:millisecond)
+            }
 
-        publish_listing(state)
-        :telemetry.execute([:ex_games, :room, :created], %{}, %{room_id: room_id, module: module})
-        {:ok, arm_tick(state)}
+            publish_listing(state)
+            :telemetry.execute([:ex_games, :room, :created], %{}, %{room_id: room_id, module: module})
+            {:ok, arm_tick(state)}
+
+          {:stop, reason} ->
+            {:stop, reason}
+        end
 
       {:stop, reason} ->
         {:stop, reason}
     end
   end
 
-  @impl true
-  def handle_call({:reserve_seat, session_id, auth_data, options, ttl}, _from, %__MODULE__{} = state) do
-    cond do
-      state.locked ->
-        {:reply, {:error, :locked}, state}
-
-      full?(state) ->
-        {:reply, {:error, :full}, state}
-
-      true ->
-        timer = Process.send_after(self(), {:seat_expired, session_id}, ttl)
-
-        reserved =
-          Map.put(state.reserved, session_id, %{auth: auth_data, options: options, timer: timer})
-
-        state = %__MODULE__{state | reserved: reserved}
-        publish_listing(state)
-        {:reply, :ok, state}
-    end
-  end
 
   def handle_call({:attach, session_id, pid, _options}, _from, %__MODULE__{} = state) do
     {seat, reserved} = Map.pop(state.reserved, session_id)
@@ -241,27 +230,35 @@ defmodule ExGames.Room.Server do
 
           case invoke_join(state, client, seat.auth) do
             {:ok, state} ->
-              ref = Process.monitor(pid)
+              case run_logic_join(state, client, seat.auth) do
+                {:ok, state} ->
+                  ref = Process.monitor(pid)
 
-              state = %__MODULE__{
-                state
-                | clients: Map.put(state.clients, session_id, client),
-                  monitors: Map.put(state.monitors, session_id, ref)
-              }
+                  state = %__MODULE__{
+                    state
+                    | clients: Map.put(state.clients, session_id, client),
+                      monitors: Map.put(state.monitors, session_id, ref)
+                  }
 
-              join_frame =
-                Wire.encode(:join_room, %{"room_id" => state.room_id, "session_id" => session_id})
+                  join_frame =
+                    Wire.encode(:join_room, %{"room_id" => state.room_id, "session_id" => session_id})
 
-              push(pid, join_frame)
-              state_frame = push_state_snapshot(pid, state)
+                  push(pid, join_frame)
+                  state_frame = push_state_snapshot(pid, state)
 
-              publish_listing(state)
-              :telemetry.execute([:ex_games, :room, :join], %{count: map_size(state.clients)}, %{
-                room_id: state.room_id,
-                module: state.module
-              })
+                  publish_listing(state)
+                  :telemetry.execute([:ex_games, :room, :join], %{count: map_size(state.clients)}, %{
+                    room_id: state.room_id,
+                    module: state.module
+                  })
 
-              {:reply, {:ok, join_frame, state_frame}, state}
+                  {:reply, {:ok, join_frame, state_frame}, state}
+
+                {:stop, reason, state} ->
+                  push(pid, Wire.encode(:error, %{code: 523, message: "join rejected"}))
+                  push_close(pid, 4002, "join rejected")
+                  {:stop, {:shutdown, {:join_rejected, session_id, reason}}, state}
+              end
 
             {:stop, reason, state} ->
               push(pid, Wire.encode(:error, %{code: 523, message: "join rejected"}))
@@ -290,6 +287,33 @@ defmodule ExGames.Room.Server do
 
   def handle_call(:client_count, _from, %__MODULE__{} = state),
     do: {:reply, map_size(state.clients), state}
+
+  @impl true
+  def handle_call({:reserve_seat, session_id, auth_data, options, ttl}, _from, %__MODULE__{} = state) do
+    cond do
+      state.locked ->
+        {:reply, {:error, :locked}, state}
+
+      full?(state) ->
+        {:reply, {:error, :full}, state}
+
+      true ->
+        case auth_chain(state, auth_data, options) do
+          {:ok, auth} ->
+            timer = Process.send_after(self(), {:seat_expired, session_id}, ttl)
+
+            reserved =
+              Map.put(state.reserved, session_id, %{auth: auth, options: options, timer: timer})
+
+            state = %__MODULE__{state | reserved: reserved}
+            publish_listing(state)
+            {:reply, :ok, state}
+
+          {:error, reason} ->
+            {:reply, {:error, reason}, state}
+        end
+    end
+  end
 
   @impl true
   def handle_cast({:client_frame, session_id, frame}, state) do
@@ -368,6 +392,7 @@ defmodule ExGames.Room.Server do
     {:stop, :normal, state}
   end
 
+
   @impl true
   def handle_info({:DOWN, ref, :process, _pid, exit_reason}, state) do
     case Enum.find(state.monitors, fn {_sid, r} -> r == ref end) do
@@ -386,15 +411,19 @@ defmodule ExGames.Room.Server do
     state = %__MODULE__{state | last_tick: System.monotonic_time(:millisecond)}
 
     case invoke_tick(state, elapsed) do
-      {:ok, state} ->
-        {:noreply, arm_tick(broadcast_state_if_dirty(state))}
-
-      {:noreply, state} ->
-        {:noreply, arm_tick(broadcast_state_if_dirty(state))}
-
       {:stop, reason, state} ->
         close_all(state, 4002, "room stopped")
         {:stop, {:shutdown, reason}, state}
+
+      {:ok, state} ->
+        case run_logic_tick(state, elapsed) do
+          {:ok, state} ->
+            {:noreply, arm_tick(broadcast_state_if_dirty(state))}
+
+          {:stop, reason, state} ->
+            close_all(state, 4002, "room stopped")
+            {:stop, {:shutdown, reason}, state}
+        end
     end
   end
 
@@ -421,6 +450,12 @@ defmodule ExGames.Room.Server do
     unpublish_listing(state)
     :telemetry.execute([:ex_games, :room, :disposed], %{}, %{room_id: state.room_id})
 
+    # цепочка логик в обратном порядке, затем сама комната
+    Enum.each(Enum.reverse(state.logics), fn {mod, logic_state} ->
+      _ = safe_apply(mod, :logic_terminate, [reason, logic_state])
+      :ok
+    end)
+
     _ = safe_apply(state.module, :room_terminate, [reason, state.user_state])
     :ok
   end
@@ -443,7 +478,7 @@ defmodule ExGames.Room.Server do
         {:stop, reason, %__MODULE__{state | user_state: user_state}}
 
       {:raise, exception, stacktrace} ->
-        log_callback_error(state, :handle_join, exception, stacktrace)
+        log_callback_error(state.module, :handle_join, exception, stacktrace, state.room_id)
         {:stop, exception, state}
 
       :callback_missing ->
@@ -460,11 +495,11 @@ defmodule ExGames.Room.Server do
         {:stop, reason, %__MODULE__{state | user_state: user_state}}
 
       {:raise, exception, stacktrace} ->
-        log_callback_error(state, :handle_tick, exception, stacktrace)
+        log_callback_error(state.module, :handle_tick, exception, stacktrace, state.room_id)
         {:stop, exception, state}
 
       :callback_missing ->
-        {:noreply, state}
+        {:ok, state}
     end
   end
 
@@ -496,65 +531,130 @@ defmodule ExGames.Room.Server do
   defp dispatch_message(%__MODULE__{} = state, client, type, payload) do
     :telemetry.execute([:ex_games, :room, :message], %{count: 1}, %{room_id: state.room_id})
 
-    case safe_apply(state.module, :handle_message, [
-           state.handle,
-           client,
-           type,
-           payload,
-           state.user_state
-         ]) do
-      {:ok, {:ok, user_state}} ->
-        {:noreply, %__MODULE__{state | user_state: user_state}}
+    # роутинг по объявленным типам: сначала встроенные логики, потом сама комната
+    case logic_for_message(state, type) do
+      {mod, logic_state} ->
+        case safe_apply(mod, :handle_message, [
+               state.handle,
+               client,
+               type,
+               payload,
+               logic_state
+             ]) do
+          {:ok, {:ok, logic_state}} ->
+            {:noreply, put_logic(state, mod, logic_state)}
 
-      {:ok, {:stop, reason, user_state}} ->
-        close_all(%__MODULE__{state | user_state: user_state}, 4002, "room stopped")
-        {:stop, {:shutdown, reason}, %__MODULE__{state | user_state: user_state}}
+          {:ok, {:stop, reason, logic_state}} ->
+            state = put_logic(state, mod, logic_state)
+            close_all(state, 4002, "room stopped")
+            {:stop, {:shutdown, reason}, state}
 
-      {:raise, exception, stacktrace} ->
-        log_callback_error(state, :handle_message, exception, stacktrace)
-        {:noreply, state}
+          {:raise, exception, stacktrace} ->
+            log_callback_error(mod, :handle_message, exception, stacktrace, state.room_id)
+            {:noreply, state}
 
-      :callback_missing ->
-        Logger.warning(
-          "[ex_games] unhandled message #{inspect(type)} in #{state.room_id} (no clause)"
-        )
+          :callback_missing ->
+            {:noreply, state}
+        end
 
-        {:noreply, state}
+      nil ->
+        case safe_apply(state.module, :handle_message, [
+               state.handle,
+               client,
+               type,
+               payload,
+               state.user_state
+             ]) do
+          {:ok, {:ok, user_state}} ->
+            {:noreply, %__MODULE__{state | user_state: user_state}}
+
+          {:ok, {:stop, reason, user_state}} ->
+            close_all(%__MODULE__{state | user_state: user_state}, 4002, "room stopped")
+            {:stop, {:shutdown, reason}, %__MODULE__{state | user_state: user_state}}
+
+          {:raise, exception, stacktrace} ->
+            log_callback_error(state.module, :handle_message, exception, stacktrace, state.room_id)
+            {:noreply, state}
+
+          :callback_missing ->
+            Logger.warning(
+              "[ex_games] unhandled message #{inspect(type)} in #{state.room_id} (no clause)"
+            )
+
+            {:noreply, state}
+        end
     end
   end
 
   defp dispatch_request(%__MODULE__{} = state, client, request_id, type, payload) do
-    case safe_apply(state.module, :handle_request, [
-           state.handle,
-           client,
-           request_id,
-           type,
-           payload,
-           state.user_state
-         ]) do
-      {:ok, {:reply, reply, user_state}} ->
-        frame =
-          Wire.encode(:room_response, {request_id, ExGames.Serialization.to_wire(reply)})
+    case logic_for_request(state, type) do
+      {mod, logic_state} ->
+        case safe_apply(mod, :handle_request, [
+               state.handle,
+               client,
+               request_id,
+               type,
+               payload,
+               logic_state
+             ]) do
+          {:ok, {:reply, reply, logic_state}} ->
+            frame =
+              Wire.encode(:room_response, {request_id, ExGames.Serialization.to_wire(reply)})
 
-        push(client.pid, frame)
-        {:noreply, %__MODULE__{state | user_state: user_state}}
+            push(client.pid, frame)
+            {:noreply, put_logic(state, mod, logic_state)}
 
-      {:ok, {:ok, user_state}} ->
-        {:noreply, %__MODULE__{state | user_state: user_state}}
+          {:ok, {:ok, logic_state}} ->
+            {:noreply, put_logic(state, mod, logic_state)}
 
-      {:ok, {:error, reason, user_state}} ->
-        message = if is_binary(reason), do: reason, else: inspect(reason)
-        push(client.pid, Wire.encode(:error, %{code: 526, message: message}))
-        {:noreply, %__MODULE__{state | user_state: user_state}}
+          {:ok, {:error, reason, logic_state}} ->
+            message = if is_binary(reason), do: reason, else: inspect(reason)
+            push(client.pid, Wire.encode(:error, %{code: 526, message: message}))
+            {:noreply, put_logic(state, mod, logic_state)}
 
-      {:raise, exception, stacktrace} ->
-        log_callback_error(state, :handle_request, exception, stacktrace)
-        push(client.pid, Wire.encode(:error, %{code: 526, message: "internal error"}))
-        {:noreply, state}
+          {:raise, exception, stacktrace} ->
+            log_callback_error(mod, :handle_request, exception, stacktrace, state.room_id)
+            push(client.pid, Wire.encode(:error, %{code: 526, message: "internal error"}))
+            {:noreply, state}
 
-      :callback_missing ->
-        push(client.pid, Wire.encode(:error, %{code: 526, message: "unknown request"}))
-        {:noreply, state}
+          :callback_missing ->
+            push(client.pid, Wire.encode(:error, %{code: 526, message: "unknown request"}))
+            {:noreply, state}
+        end
+
+      nil ->
+        case safe_apply(state.module, :handle_request, [
+               state.handle,
+               client,
+               request_id,
+               type,
+               payload,
+               state.user_state
+             ]) do
+          {:ok, {:reply, reply, user_state}} ->
+            frame =
+              Wire.encode(:room_response, {request_id, ExGames.Serialization.to_wire(reply)})
+
+            push(client.pid, frame)
+            {:noreply, %__MODULE__{state | user_state: user_state}}
+
+          {:ok, {:ok, user_state}} ->
+            {:noreply, %__MODULE__{state | user_state: user_state}}
+
+          {:ok, {:error, reason, user_state}} ->
+            message = if is_binary(reason), do: reason, else: inspect(reason)
+            push(client.pid, Wire.encode(:error, %{code: 526, message: message}))
+            {:noreply, %__MODULE__{state | user_state: user_state}}
+
+          {:raise, exception, stacktrace} ->
+            log_callback_error(state.module, :handle_request, exception, stacktrace, state.room_id)
+            push(client.pid, Wire.encode(:error, %{code: 526, message: "internal error"}))
+            {:noreply, state}
+
+          :callback_missing ->
+            push(client.pid, Wire.encode(:error, %{code: 526, message: "unknown request"}))
+            {:noreply, state}
+        end
     end
   end
 
@@ -587,6 +687,8 @@ defmodule ExGames.Room.Server do
         {:ok, {:ok, user_state}} -> %__MODULE__{state | user_state: user_state}
         _ -> state
       end
+
+    state = run_logic_leave(state, client, reason)
 
     publish_listing(state)
     :telemetry.execute([:ex_games, :room, :leave], %{count: map_size(state.clients)}, %{
@@ -727,10 +829,140 @@ defmodule ExGames.Room.Server do
     end
   end
 
-  defp log_callback_error(state, name, exception, stacktrace) do
+
+  defp log_callback_error(module, name, exception, stacktrace, room_id) do
     Logger.error(
-      "[ex_games] #{state.module}.#{name}/… raised in room #{state.room_id}: " <>
+      "[ex_games] #{module}.#{name}/… raised in room #{room_id}: " <>
         Exception.format(:error, exception, stacktrace)
     )
+  end
+
+  # -------------------------------------------------------------------------
+  # Встраиваемые модули логики (ExGames.Room.Logic)
+  # -------------------------------------------------------------------------
+
+  # Старт цепочки встроенных модулей логики (в порядке объявления).
+  defp init_logics([], _create_options, _handle, acc), do: {:ok, Enum.reverse(acc)}
+
+  defp init_logics([mod | rest], create_options, handle, acc) do
+    # модули логики ленивы: гарантируем загрузку до первой проверки
+    with {:module, ^mod} <- Code.ensure_loaded(mod),
+         {:ok, {:ok, logic_state}} <- safe_apply(mod, :logic_init, [create_options, handle]) do
+      init_logics(rest, create_options, handle, [{mod, logic_state} | acc])
+    else
+      {:ok, {:stop, reason}} ->
+        {:stop, {:logic_init_failed, mod, reason}}
+
+      {:raise, exception, _} ->
+        {:stop, {:logic_init_crashed, mod, exception}}
+
+      :callback_missing ->
+        {:stop, {:logic_init_missing, mod}}
+
+      {:error, reason} ->
+        {:stop, {:logic_not_loadable, mod, reason}}
+    end
+  end
+
+  # Цепочка авторизации: комната (handle_auth), затем модули логики
+  # (logic_auth) — могут преобразовывать auth-данные и отклонять бронь.
+  defp auth_chain(%__MODULE__{} = state, auth_data, options) do
+    with {:ok, auth} <-
+           apply_auth(state.module, :handle_auth, [auth_data, options, state.handle], auth_data) do
+      Enum.reduce_while(state.logics, {:ok, auth}, fn {mod, _ls}, {:ok, acc} ->
+        case safe_apply(mod, :logic_auth, [acc, options, state.handle]) do
+          {:ok, :ok} ->
+            {:cont, {:ok, acc}}
+
+          {:ok, {:ok, auth}} ->
+            {:cont, {:ok, auth}}
+
+          {:ok, {:error, reason}} ->
+            {:halt, {:error, reason}}
+
+          {:raise, exception, stacktrace} ->
+            log_callback_error(state.module, :logic_auth, exception, stacktrace, state.room_id)
+            {:halt, {:error, exception}}
+
+          :callback_missing ->
+            {:cont, {:ok, acc}}
+        end
+      end)
+    end
+  end
+
+  defp apply_auth(mod, fun, args, default_auth) do
+    case safe_apply(mod, fun, args) do
+      {:ok, :ok} -> {:ok, default_auth}
+      {:ok, {:ok, auth}} -> {:ok, auth}
+      {:ok, {:error, reason}} -> {:error, reason}
+      {:raise, exception, stacktrace} ->
+        log_callback_error(mod, fun, exception, stacktrace, "n/a")
+        {:error, exception}
+      :callback_missing -> {:ok, default_auth}
+    end
+  end
+
+  defp put_logic(%__MODULE__{} = state, mod, logic_state) do
+    %{state | logics: List.keyreplace(state.logics, mod, 0, {mod, logic_state})}
+  end
+
+  defp logic_for_message(%__MODULE__{} = state, type) do
+    Enum.find(state.logics, fn {mod, _} ->
+      function_exported?(mod, :__message_types__, 0) and type in mod.__message_types__()
+    end)
+  end
+
+  defp logic_for_request(%__MODULE__{} = state, type) do
+    Enum.find(state.logics, fn {mod, _} ->
+      function_exported?(mod, :__request_types__, 0) and type in mod.__request_types__()
+    end)
+  end
+
+  defp run_logic_join(%__MODULE__{} = state, client, auth) do
+    Enum.reduce_while(state.logics, {:ok, state}, fn {mod, logic_state}, {:ok, acc} ->
+      case safe_apply(mod, :logic_join, [state.handle, client, auth, logic_state]) do
+        {:ok, {:ok, new_state}} ->
+          {:cont, {:ok, put_logic(acc, mod, new_state)}}
+
+        {:ok, {:stop, reason, new_state}} ->
+          {:halt, {:stop, reason, put_logic(acc, mod, new_state)}}
+
+        {:raise, exception, stacktrace} ->
+          log_callback_error(mod, :logic_join, exception, stacktrace, state.room_id)
+          {:halt, {:stop, exception, acc}}
+
+        :callback_missing ->
+          {:cont, {:ok, acc}}
+      end
+    end)
+  end
+
+  defp run_logic_leave(%__MODULE__{} = state, client, reason) do
+    Enum.reduce(state.logics, state, fn {mod, logic_state}, acc ->
+      case safe_apply(mod, :logic_leave, [state.handle, client, reason, logic_state]) do
+        {:ok, {:ok, new_state}} -> put_logic(acc, mod, new_state)
+        _ -> acc
+      end
+    end)
+  end
+
+  defp run_logic_tick(%__MODULE__{} = state, elapsed) do
+    Enum.reduce_while(state.logics, {:ok, state}, fn {mod, logic_state}, {:ok, acc} ->
+      case safe_apply(mod, :logic_tick, [elapsed, logic_state]) do
+        {:ok, {:ok, new_state}} ->
+          {:cont, {:ok, put_logic(acc, mod, new_state)}}
+
+        {:ok, {:stop, reason, new_state}} ->
+          {:halt, {:stop, reason, put_logic(acc, mod, new_state)}}
+
+        {:raise, exception, stacktrace} ->
+          log_callback_error(mod, :logic_tick, exception, stacktrace, state.room_id)
+          {:halt, {:stop, exception, acc}}
+
+        :callback_missing ->
+          {:cont, {:ok, acc}}
+      end
+    end)
   end
 end
