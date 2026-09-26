@@ -99,6 +99,26 @@ end
 ExGames.Matchmaker.define_room("arena", MyGame.Arena, filter_by: ["mode"])
 ```
 
+Когда логики становится много, выносите её из оболочки комнаты во встраиваемые
+модули `ExGames.Room.Logic` — тот же DSL, свой срез состояния, роутинг
+сообщений по объявленным типам:
+
+```elixir
+defmodule MyGame.Rules do
+  use ExGames.Room.Logic
+
+  def logic_init(_options, _room), do: {:ok, %{scores: %{}}}
+
+  message "hit", %{"target" => t}, room, client, state do
+    broadcast(room, "hit", %{"by" => client.session_id, "target" => t})
+    {:ok, update_in(state, [:scores, t], &(((&1 || 0) + 1)))}
+  end
+end
+
+# оболочка подключает модуль строкой:
+use ExGames.Room, max_clients: 8, logic: [MyGame.Rules]
+```
+
 Игровая логика может жить и в нативном процессе (C++/Rust/Haxe/Python —
 что угодно): `ExGames.GameLogic` с адаптерами Port/TCP и одним фреймингом
 (msgpack + u32 length-prefix). Краш нативного процесса не теряет игру —
