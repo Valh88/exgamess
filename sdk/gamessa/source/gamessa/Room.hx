@@ -1,0 +1,366 @@
+package gamessa;
+
+import gamessa.transport.ITransport;
+import gamessa.transport.TransportClose;
+import gamessa.transport.WebSocketTransport;
+import gamessa.util.Signal;
+import gamessa.wire.Frame;
+import gamessa.wire.Wire;
+import haxe.ds.StringMap;
+import haxe.io.Bytes;
+
+typedef JoinEvent = {
+	var data:StringMap<Dynamic>;
+}
+
+typedef ErrorEvent = {
+	var code:Int;
+	var message:String;
+}
+
+typedef LeaveEvent = {
+	var code:Int;
+	var reason:String;
+}
+
+typedef RequestCallback = {
+	var resolve:Dynamic->Void;
+	var reject:MatchMakeError->Void;
+	var timer:Null<haxe.Timer>;
+}
+
+/**
+	Игровой WS-канал комнаты. Создаётся через `Client.connectRoom` —
+	сам открывает транспорт, обрабатывает рукопожатие и reconnect.
+
+	Сигналы:
+
+	* `onJoin` — кадр JoinRoom (room_id, session_id, reconnection_token);
+	* `onMessage` — RoomData(type, payload);
+	* `onStateChange` — RoomState (полный снапшот);
+	* `onError` — кадр RoomError;
+	* `onDrop` — не-согласованный обрыв: начат auto-reconnect (backoff);
+	* `onLeave` — комната покинута (согласованно или после исчерпания попыток).
+
+	`send` до JOIN буферизуется (flush после рукопожатия); при обрыве —
+	буферизуется до reconnect (cap `bufferLimit`).
+*/
+class Room {
+	public var client(default, null):Client;
+	public var reservation(default, null):SeatReservation;
+	public var roomId(get, null):String;
+	public var sessionId(get, null):String;
+	public var reconnectionToken(get, null):Null<String>;
+
+	// ------------------------------------------------------------------
+	// События
+	// ------------------------------------------------------------------
+
+	public var onJoin(default, null):Signal<JoinEvent> = new Signal();
+	public var onMessage(default, null):Signal<{type:Dynamic, message:Dynamic}> = new Signal();
+	public var onStateChange(default, null):Signal<Dynamic> = new Signal();
+	public var onError(default, null):Signal<ErrorEvent> = new Signal();
+	/** Не-согласованный обрыв: начат auto-reconnect (payload — null). */
+	public var onDrop(default, null):Signal<Dynamic> = new Signal();
+	public var onLeave(default, null):Signal<LeaveEvent> = new Signal();
+
+	// ------------------------------------------------------------------
+	// Reconnect-настройки
+	// ------------------------------------------------------------------
+
+	/** Стартовая задержка backoff, мс. */
+	public var reconnectDelayMs:Int = 100;
+
+	/** Максимум задержки backoff, мс. */
+	public var reconnectMaxDelayMs:Int = 5000;
+
+	/** Максимум попыток переподключения. */
+	public var maxRetries:Int = 15;
+
+	/** Лимит буфера исходящих при обрыве. */
+	public var bufferLimit:Int = 10;
+
+	/** Таймаут request/1 по умолчанию, мс. */
+	public var requestTimeoutMs:Int = 10_000;
+
+	// ------------------------------------------------------------------
+	// Внутреннее
+	// ------------------------------------------------------------------
+
+	/** Активный транспорт (для продвинутых сценариев и тестов). */
+	public var connection(default, null):ITransport;
+
+	var joined:Bool = false;
+	var leaving:Bool = false;
+	var disposed:Bool = false;
+
+	var sendBuffer:Array<Bytes> = [];
+	var pending:Map<Int, RequestCallback> = new Map();
+	var nextRequestId:Int = 1;
+
+	var retry:Int = 0;
+	var pingSentAt:Float = 0;
+
+	/** Последний снапшот состояния (после onStateChange). */
+	public var state(default, null):Dynamic;
+
+	public function new(client:Client, reservation:SeatReservation, ?transport:ITransport) {
+		this.client = client;
+		this.reservation = reservation;
+		this.connection = transport != null
+			? transport
+			: new WebSocketTransport(client.roomWsUrl(reservation.roomId, reservation.sessionId));
+		attach();
+	}
+
+	function get_roomId():String {
+		return reservation.roomId;
+	}
+
+	function get_sessionId():String {
+		return reservation.sessionId;
+	}
+
+	function get_reconnectionToken():Null<String> {
+		return reservation.reconnectionToken;
+	}
+
+	// ------------------------------------------------------------------
+	// Исходящие
+	// ------------------------------------------------------------------
+
+	/** Игровое сообщение: broadcast-модель (fire-and-forget). */
+	public function send(type:Dynamic, payload:Dynamic):Void {
+		queueOrSend(Wire.encode(RoomData(type, payload)));
+	}
+
+	/**
+		Запрос-ответ: сервер отвечает RoomResponse с тем же request_id
+		или кадром RoomError (тогда колбэк reject с ошибкой 526... точнее —
+		ошибка приходит без request_id, поэтому reject по таймауту).
+	*/
+	public function request(type:Dynamic, payload:Dynamic, ?timeoutMs:Int, onResult:Dynamic->Void, onError:MatchMakeError->Void):Void {
+		var requestId = nextRequestId++;
+
+		var cb:RequestCallback = {
+			resolve: onResult,
+			reject: onError,
+			timer: null
+		};
+
+		cb.timer = haxe.Timer.delay(() -> {
+			if (pending.remove(requestId))
+				onError(new MatchMakeError(Wire.ERR_INTERNAL, 'request "$type" timed out'));
+		}, timeoutMs != null ? timeoutMs : requestTimeoutMs);
+
+		pending.set(requestId, cb);
+		queueOrSend(Wire.encode(RoomRequest(requestId, type, payload)));
+	}
+
+	/** RTT-замер: отправляет PING и измеряет время до PONG. */
+	public function ping(onResult:Float->Void, onError:String->Void):Void {
+		var handler:Float->Void = null;
+		var done = false;
+		handler = rtt -> {
+			done = true;
+			pingHandlers.remove(handler);
+			onResult(rtt);
+		};
+		pingHandlers.push(handler);
+
+		haxe.Timer.delay(() -> {
+			if (!done) {
+				pingHandlers.remove(handler);
+				onError("ping timed out");
+			}
+		}, requestTimeoutMs);
+
+		pingSentAt = now();
+		queueOrSend(Wire.encode(Ping));
+	}
+
+	/**
+		Покидает комнату. При `consented = true` отправляет LeaveRoom и не
+		делает reconnect; иначе — то же самое (принудительный локальный выход).
+	*/
+	public function leave(consented:Bool = true):Void {
+		if (leaving)
+			return;
+		leaving = true;
+
+		if (connection.isOpen())
+			queueOrSend(Wire.encode(LeaveRoom));
+
+		dispose();
+		onLeave.dispatch({code: Wire.CLOSE_NORMAL, reason: "client left"});
+	}
+
+	// ------------------------------------------------------------------
+	// Транспорт
+	// ------------------------------------------------------------------
+
+	function attach():Void {
+		connection.onOpen = () -> {};
+		connection.onMessage = bytes -> handleFrame(bytes);
+		connection.onError = message -> onError.dispatch({code: 0, message: message});
+		connection.onClose = close -> handleClose(close);
+
+		connection.connect();
+	}
+
+	function handleFrame(bytes:Bytes):Void {
+		var frame:Frame;
+		try {
+			frame = Wire.decode(bytes);
+		} catch (e:Dynamic) {
+			onError.dispatch({code: Wire.ERR_INTERNAL, message: 'invalid frame: $e'});
+			return;
+		}
+
+		switch (frame) {
+			case JoinRoom(data):
+				joined = true;
+				retry = 0;
+				sendBuffer = [];
+				reservation.sessionId = data.get("session_id");
+				reservation.reconnectionToken = data.get("reconnection_token");
+				onJoin.dispatch({data: data});
+				flushBuffer();
+
+			case RoomData(type, payload):
+				onMessage.dispatch({type: type, message: payload});
+
+			case RoomState(payload):
+				state = payload;
+				onStateChange.dispatch(payload);
+
+			case RoomStatePatch(_):
+				// дельты зарезервированы протоколом; пока игнорируем
+
+			case RoomError(code, message):
+				onError.dispatch({code: code, message: message});
+
+			case Ping:
+				// ответ сервера на наш PING — резолвим RTT-замеры
+				var rtt = now() - pingSentAt;
+				var handlers = pingHandlers;
+				pingHandlers = [];
+				for (handler in handlers)
+					handler(rtt);
+
+			case RoomResponse(requestId, payload):
+				var cb = pending.get(requestId);
+				if (cb != null) {
+					pending.remove(requestId);
+					if (cb.timer != null)
+						cb.timer.stop();
+					cb.resolve(payload);
+				}
+
+			case RoomRequest(_, _, _):
+				// сервер не шлёт запросы клиенту — игнорируем
+
+			case LeaveRoom:
+				// сервер подтверждает выход — закрытие придёт отдельно
+		}
+	}
+
+	function handleClose(close:TransportClose):Void {
+		if (leaving || disposed) {
+			dispose();
+			return;
+		}
+
+		// не-согласованный обрыв: попытки reconnect по токену
+		joined = false;
+		onDrop.dispatch(null);
+
+		if (reservation.reconnectionToken == null) {
+			// reconnect недоступен — выходим с кодом таймаута
+			dispose();
+			onLeave.dispatch({code: Wire.CLOSE_RECONNECT_TIMEOUT, reason: "no reconnection token"});
+			return;
+		}
+
+		scheduleReconnect();
+	}
+
+	function scheduleReconnect():Void {
+		if (disposed)
+			return;
+
+		var delay = Std.int(Math.min(reconnectDelayMs * Math.pow(2, retry), reconnectMaxDelayMs));
+
+		haxe.Timer.delay(() -> {
+			if (disposed || leaving)
+				return;
+
+			client.reconnect(roomId, reservation.reconnectionToken, reservation.sessionId,
+				res -> {
+					if (disposed || leaving)
+						return;
+					openReconnectTransport(res);
+				},
+				err -> {
+					retry++;
+					if (retry >= maxRetries) {
+						dispose();
+						onLeave.dispatch({code: Wire.CLOSE_RECONNECT_TIMEOUT, reason: 'reconnect failed: ${err.message}'});
+					} else {
+						scheduleReconnect();
+					}
+				});
+		}, delay);
+	}
+
+	function openReconnectTransport(res:SeatReservation):Void {
+		connection = new WebSocketTransport(client.roomWsUrl(roomId, res.sessionId, res.reconnectionToken));
+		attach();
+	}
+
+	function queueOrSend(frame:Bytes):Void {
+		if (joined && connection.isOpen()) {
+			connection.send(frame);
+		} else {
+			sendBuffer.push(frame);
+			if (sendBuffer.length > bufferLimit)
+				sendBuffer.shift();
+		}
+	}
+
+	function flushBuffer():Void {
+		if (!joined)
+			return;
+		var buffered = sendBuffer;
+		sendBuffer = [];
+		for (frame in buffered)
+			connection.send(frame);
+	}
+
+	// ------------------------------------------------------------------
+	// Внутреннее
+	// ------------------------------------------------------------------
+
+	var pingHandlers:Array<Float->Void> = [];
+
+	function dispose():Void {
+		disposed = true;
+		joined = false;
+		sendBuffer = [];
+
+		for (cb in pending) {
+			if (cb.timer != null)
+				cb.timer.stop();
+			cb.reject(new MatchMakeError(Wire.CLOSE_NORMAL, "room closed"));
+		}
+		pending.clear();
+
+		try {
+			connection.close();
+		} catch (e:Dynamic) {}
+	}
+
+	static function now():Float {
+		return haxe.Timer.stamp() * 1000.0;
+	}
+}

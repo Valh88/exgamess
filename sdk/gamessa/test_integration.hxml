@@ -1,0 +1,12 @@
+# Интеграционные тесты против живого сервера (PORT=4100).
+# Запуск: haxe test_integration.hxml
+# (sys-транспорт: HL — основной нативный рантайм; interp не годится —
+#  потоки eval не дружат с блокирующим select hxWebSockets)
+-cp source
+-cp test
+-cp test/integration
+-main RunIntegration
+-lib hxWebSockets
+-lib utest
+-hl bin/integration.hl
+--cmd hl bin/integration.hl
