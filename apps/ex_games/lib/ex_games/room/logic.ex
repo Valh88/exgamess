@@ -78,6 +78,9 @@ defmodule ExGames.Room.Logic do
   @callback logic_tick(elapsed_ms :: non_neg_integer(), state()) ::
               {:ok, state()} | {:stop, reason :: term(), state()}
 
+  @callback logic_info(msg :: term(), state()) ::
+              {:ok, state()} | {:stop, reason :: term(), state()}
+
   @callback logic_terminate(reason :: term(), state()) :: term()
 
   @optional_callbacks [
@@ -85,6 +88,7 @@ defmodule ExGames.Room.Logic do
     {:logic_join, 4},
     {:logic_leave, 4},
     {:logic_tick, 2},
+    {:logic_info, 2},
     {:logic_terminate, 2}
   ]
 
@@ -128,6 +132,7 @@ defmodule ExGames.Room.Logic do
       {:logic_join, 4, [:_room, :_client, :_auth, :state], {:ok, state}},
       {:logic_leave, 4, [:_room, :_client, :_reason, :state], {:ok, state}},
       {:logic_tick, 2, [:_elapsed_ms, :state], {:ok, state}},
+      {:logic_info, 2, [:_msg, :state], {:ok, state}},
       {:logic_terminate, 2, [:_reason, :_state], :ok}
     ]
 
