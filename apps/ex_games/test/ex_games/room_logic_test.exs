@@ -30,6 +30,7 @@ defmodule ExGames.RoomLogicTest do
     FakeTransport.send_frame(room_id, sid, Wire.encode(:room_data, {"add", %{"n" => 7}}))
 
     {:ok, pid} = Rooms.lookup(room_id)
+
     assert eventually(fn ->
              %{logics: logics} = :sys.get_state(pid)
              %{scores: scores} = logic_state(logics, ExGames.Test.ScoreLogic)
@@ -59,7 +60,8 @@ defmodule ExGames.RoomLogicTest do
 
   test "logic_join/leave maintain logic state slice", %{room_id: room_id} do
     sid = join!(room_id, %{"start" => 3})
-    keeper = join!(room_id, %{})  # держит комнату живой при отсоединении первого
+    # держит комнату живой при отсоединении первого
+    keeper = join!(room_id, %{})
 
     {:ok, pid} = Rooms.lookup(room_id)
     %{logics: logics} = :sys.get_state(pid)
@@ -69,10 +71,11 @@ defmodule ExGames.RoomLogicTest do
     Server.detach(room_id, sid)
 
     assert eventually(fn ->
-      %{logics: logics, clients: clients} = :sys.get_state(pid)
-      map_size(clients) == 1 and
-        logic_state(logics, ExGames.Test.ScoreLogic).scores == %{keeper => 0}
-    end)
+             %{logics: logics, clients: clients} = :sys.get_state(pid)
+
+             map_size(clients) == 1 and
+               logic_state(logics, ExGames.Test.ScoreLogic).scores == %{keeper => 0}
+           end)
   end
 
   test "logic_tick runs on room tick", %{room_id: room_id} do

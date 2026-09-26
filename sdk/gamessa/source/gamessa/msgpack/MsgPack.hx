@@ -37,8 +37,8 @@ class MsgPack {
 		} else if (Std.isOfType(value, Float)) {
 			b.addByte(0xcb);
 			var i = haxe.io.FPHelper.doubleToI64(value);
-			writeU32(b, haxe.Int64.getHigh(i));
-			writeU32(b, haxe.Int64.getLow(i));
+			writeU32(b, i.high);
+			writeU32(b, i.low);
 		} else if (Std.isOfType(value, String)) {
 			encodeString(b, value);
 		} else if (Std.isOfType(value, Bytes)) {

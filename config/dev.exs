@@ -5,6 +5,7 @@ config :ex_games_web, ExGamesWeb.Repo,
   database: Path.expand("../apps/ex_games_web/priv/db/dev.db", __DIR__),
   default_transaction_mode: :immediate,
   pool_size: 10
+
 # For development, we disable any cache and enable
 # debugging and code reloading.
 #

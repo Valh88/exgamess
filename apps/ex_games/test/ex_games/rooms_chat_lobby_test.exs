@@ -19,10 +19,18 @@ defmodule ExGames.RoomsChatLobbyTest do
     end
 
     test "say broadcasts to channel with username from auth", %{name: name} do
-      {:ok, res} = Matchmaker.join_or_create(name, %{"username" => "ann"}, %{"options" => %{"channel" => "global"}})
+      {:ok, res} =
+        Matchmaker.join_or_create(name, %{"username" => "ann"}, %{
+          "options" => %{"channel" => "global"}
+        })
+
       {t1, _join, _st} = FakeTransport.attach!(res.room_id, res.session_id)
 
-      {:ok, res2} = Matchmaker.join_or_create(name, %{"username" => "bob"}, %{"options" => %{"channel" => "global"}})
+      {:ok, res2} =
+        Matchmaker.join_or_create(name, %{"username" => "bob"}, %{
+          "options" => %{"channel" => "global"}
+        })
+
       {t2, _join2, _st2} = FakeTransport.attach!(res2.room_id, res2.session_id)
 
       FakeTransport.send_frame(
@@ -41,13 +49,26 @@ defmodule ExGames.RoomsChatLobbyTest do
     end
 
     test "history request returns past messages", %{name: name} do
-      {:ok, res} = Matchmaker.join_or_create(name, %{"username" => "ann"}, %{"options" => %{"channel" => "global"}})
+      {:ok, res} =
+        Matchmaker.join_or_create(name, %{"username" => "ann"}, %{
+          "options" => %{"channel" => "global"}
+        })
+
       {t1, _join, _st} = FakeTransport.attach!(res.room_id, res.session_id)
 
-      FakeTransport.send_frame(res.room_id, res.session_id, Wire.encode(:room_data, {"say", %{"text" => "first"}}))
+      FakeTransport.send_frame(
+        res.room_id,
+        res.session_id,
+        Wire.encode(:room_data, {"say", %{"text" => "first"}})
+      )
+
       _ = ExGames.RoomLifecycleTestHelpers.wait(t1, "say")
 
-      FakeTransport.send_frame(res.room_id, res.session_id, Wire.encode(:room_request, {3, "history", %{}}))
+      FakeTransport.send_frame(
+        res.room_id,
+        res.session_id,
+        Wire.encode(:room_request, {3, "history", %{}})
+      )
 
       assert {:ok, {:room_response, 3, %{"messages" => [msg]}}} =
                Wire.decode(ExGames.RoomLifecycleTestHelpers.wait_response(t1, 3))

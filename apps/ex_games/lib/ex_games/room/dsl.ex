@@ -56,9 +56,9 @@ defmodule ExGames.Room.DSL do
   @doc "Catch-all handle_message: неизвестные сообщения игнорируются."
   def generate_message_catch_all do
     [
-    quote do
-      def handle_message(_room, _client, _type, _payload, state), do: {:ok, state}
-    end
+      quote do
+        def handle_message(_room, _client, _type, _payload, state), do: {:ok, state}
+      end
     ]
   end
 
@@ -84,11 +84,11 @@ defmodule ExGames.Room.DSL do
   @doc "Catch-all handle_request: неизвестный запрос — ошибка клиенту."
   def generate_request_catch_all do
     [
-    quote do
-      def handle_request(_room, _client, request_id, _type, _payload, state) do
-        {:error, "unknown request", state}
+      quote do
+        def handle_request(_room, _client, request_id, _type, _payload, state) do
+          {:error, "unknown request", state}
+        end
       end
-    end
     ]
   end
 

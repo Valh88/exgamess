@@ -51,7 +51,10 @@ defmodule ExGames.RoomLifecycleTest do
            end)
 
     frame = find_frame(transport, "join")
-    assert {:ok, {:room_data, "join", %{"session_id" => ^sid, "auth" => auth}}} = Wire.decode(frame)
+
+    assert {:ok, {:room_data, "join", %{"session_id" => ^sid, "auth" => auth}}} =
+             Wire.decode(frame)
+
     assert auth == %{"token" => "t"}
   end
 
@@ -68,8 +71,11 @@ defmodule ExGames.RoomLifecycleTest do
     FakeTransport.send_frame(room_id, sid1, frame)
 
     # оба получают broadcast "echo"
-    assert {:ok, {:room_data, "echo", %{"x" => 3}}} = Wire.decode(wait_for(t1, {:room_data, "echo"}))
-    assert {:ok, {:room_data, "echo", %{"x" => 3}}} = Wire.decode(wait_for(t2, {:room_data, "echo"}))
+    assert {:ok, {:room_data, "echo", %{"x" => 3}}} =
+             Wire.decode(wait_for(t1, {:room_data, "echo"}))
+
+    assert {:ok, {:room_data, "echo", %{"x" => 3}}} =
+             Wire.decode(wait_for(t2, {:room_data, "echo"}))
 
     request = Wire.encode(:room_request, {7, "whoami", %{}})
     FakeTransport.send_frame(room_id, sid2, request)
@@ -98,7 +104,9 @@ defmodule ExGames.RoomLifecycleTest do
     assert Rooms.alive?(room_id)
 
     FakeTransport.send_frame(room_id, sid1, Wire.encode(:room_data, {"echo", %{"ok" => true}}))
-    assert {:ok, {:room_data, "echo", %{"ok" => true}}} = Wire.decode(wait_for(t1, {:room_data, "echo"}))
+
+    assert {:ok, {:room_data, "echo", %{"ok" => true}}} =
+             Wire.decode(wait_for(t1, {:room_data, "echo"}))
   end
 
   test "max_clients=2 blocks the third reservation", %{room_id: room_id} do
@@ -150,7 +158,9 @@ defmodule ExGames.RoomLifecycleTest do
 
     assert eventually(fn ->
              FakeTransport.frames(transport, 100)
-             |> Enum.any?(fn f -> match?({:ok, {:room_state, %{"ticks" => 100}}}, Wire.decode(f)) end)
+             |> Enum.any?(fn f ->
+               match?({:ok, {:room_state, %{"ticks" => 100}}}, Wire.decode(f))
+             end)
            end)
   end
 
@@ -173,6 +183,7 @@ defmodule ExGames.RoomLifecycleTest do
     {:ok, pid} = Rooms.lookup(room_id)
 
     GenServer.cast(pid, {:kick, sid})
+
     # последний клиент вышел — комната закрылась (auto_dispose)
     assert eventually(fn -> not Rooms.alive?(room_id) end)
     assert eventually(fn -> not Process.alive?(transport) end)

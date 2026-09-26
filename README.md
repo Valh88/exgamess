@@ -7,7 +7,7 @@ Phoenix 1.8: аккаунты и RBAC, матчмейкинг с двухфаз�
 
 Клиент — любой язык: фреймворк говорит по HTTP (JSON) + WebSocket
 (бинарный протокол `[opcode u8][msgpack]`, совместимый по кодам операций
-с Colyseus). В планах — Haxe SDK.
+с Colyseus). Haxe-клиентский SDK — [`sdk/gamessa`](sdk/gamessa/README.md) (JS + HashLink, авто-reconnect).
 
 ## Структура (umbrella)
 
@@ -17,6 +17,7 @@ Phoenix 1.8: аккаунты и RBAC, матчмейкинг с двухфаз�
 | `apps/ex_games_account` | аккаунты: пользователи, роли (RBAC), токены, баны (Ecto + SQLite) |
 | `apps/ex_games_web` | Phoenix: REST API, WebSocket-транспорт, LiveView-заготовка админки |
 | `apps/arena_example` | демо-игра: полный цикл от регистрации до матча 2×2 |
+| `sdk/gamessa` | Haxe-клиентский SDK (JS + HashLink): msgpack, wire, Room, reconnect |
 
 ## Быстрый старт
 
@@ -50,7 +51,7 @@ curl -s -X POST localhost:4000/api/matchmake/join_or_create/arena \
 ## Тесты
 
 ```bash
-mix test                        # все приложения (82 теста)
+mix test                        # все приложения (106 тестов)
 mix test --include native      # + тесты Port-адаптера (spawn внешних процессов)
 ```
 

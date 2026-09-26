@@ -1,14 +1,13 @@
-
 {
 	"name": "gamessa",
 	"license": "MIT",
-	"tags": ["haxe", "client", "sdk"],
-	"description": "haxe client sdk for exgamessa",
+	"tags": ["haxe", "client", "sdk", "websocket", "games"],
+	"description": "Haxe client SDK for ExGames master-server (Elixir/Phoenix): matchmake + room WebSocket channel with auto-reconnect",
 	"version": "0.1.0",
-	"releasenote": "",
+	"releasenote": "initial release: msgpack codec, wire protocol, client/room, reconnect flow (js + hashlink)",
 	"contributors": ["vano"],
 	"dependencies": {
-	  "hxWebSockets"
+	  "hxWebSockets": ""
 	},
 	"classPath": "source"
 }

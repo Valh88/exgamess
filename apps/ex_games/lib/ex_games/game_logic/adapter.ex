@@ -13,7 +13,12 @@ defmodule ExGames.GameLogic.Adapter do
   @callback start_link(ExGames.GameLogic.opts()) ::
               {:ok, handle :: term()} | {:error, term()}
 
-  @callback call(handle :: term(), fn_name :: String.t(), args :: [term()], ExGames.GameLogic.state()) ::
+  @callback call(
+              handle :: term(),
+              fn_name :: String.t(),
+              args :: [term()],
+              ExGames.GameLogic.state()
+            ) ::
               {:ok, result :: term(), ExGames.GameLogic.state()} | {:error, term()}
 
   @callback tick(handle :: term(), dt_ms :: non_neg_integer(), ExGames.GameLogic.state()) ::

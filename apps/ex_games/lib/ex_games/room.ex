@@ -97,11 +97,22 @@ defmodule ExGames.Room do
   @callback handle_tick(elapsed_ms :: non_neg_integer(), state()) ::
               {:ok, state()} | {:stop, reason :: term(), state()}
 
-  @callback handle_message(handle(), Client.t(), type :: String.t() | integer(), payload :: term(), state()) ::
+  @callback handle_message(
+              handle(),
+              Client.t(),
+              type :: String.t() | integer(),
+              payload :: term(),
+              state()
+            ) ::
               {:ok, state()} | {:stop, reason :: term(), state()}
 
-  @callback handle_request(handle(), Client.t(), request_id :: non_neg_integer(),
-              type :: String.t() | integer(), payload :: term(), state()
+  @callback handle_request(
+              handle(),
+              Client.t(),
+              request_id :: non_neg_integer(),
+              type :: String.t() | integer(),
+              payload :: term(),
+              state()
             ) ::
               {:reply, reply :: term(), state()}
               | {:ok, state()}
@@ -140,8 +151,19 @@ defmodule ExGames.Room do
       @behaviour ExGames.Room
 
       import ExGames.Room,
-        only: [message: 6, request: 6, broadcast: 3, send_to: 4, kick: 2, lock: 1,
-               unlock: 1, set_metadata: 2, set_state: 2, clients: 1, count: 1]
+        only: [
+          message: 6,
+          request: 6,
+          broadcast: 3,
+          send_to: 4,
+          kick: 2,
+          lock: 1,
+          unlock: 1,
+          set_metadata: 2,
+          set_state: 2,
+          clients: 1,
+          count: 1
+        ]
 
       ExGames.Room.DSL.register_attributes(__MODULE__)
 

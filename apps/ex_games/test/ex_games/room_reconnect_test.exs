@@ -40,7 +40,11 @@ defmodule ExGames.RoomReconnectTest do
   end
 
   defp request_scores!(transport, room_id, sid, request_id) do
-    FakeTransport.send_frame(room_id, sid, Wire.encode(:room_request, {request_id, "scores", %{}}))
+    FakeTransport.send_frame(
+      room_id,
+      sid,
+      Wire.encode(:room_request, {request_id, "scores", %{}})
+    )
 
     assert eventually(fn ->
              FakeTransport.frames(transport, 50)
@@ -68,7 +72,9 @@ defmodule ExGames.RoomReconnectTest do
     if fun.() do
       :ok
     else
-      if System.monotonic_time(:millisecond) >= deadline, do: flunk("eventually condition not met")
+      if System.monotonic_time(:millisecond) >= deadline,
+        do: flunk("eventually condition not met")
+
       Process.sleep(10)
       do_eventually(fun, deadline)
     end

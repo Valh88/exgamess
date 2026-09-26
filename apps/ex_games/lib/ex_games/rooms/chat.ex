@@ -28,7 +28,11 @@ defmodule ExGames.Rooms.Chat do
 
   @impl true
   def handle_join(room, client, auth, state) do
-    broadcast(room, "joined", %{"session_id" => client.session_id, "username" => username(client, auth)})
+    broadcast(room, "joined", %{
+      "session_id" => client.session_id,
+      "username" => username(client, auth)
+    })
+
     {:ok, state}
   end
 

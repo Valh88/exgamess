@@ -21,8 +21,16 @@ defmodule ExGames.Wire do
   """
 
   @typedoc "Код операции кадра."
-  @type opcode :: :join_room | :error | :leave_room | :room_data | :room_state |
-                  :room_state_patch | :ping | :room_request | :room_response
+  @type opcode ::
+          :join_room
+          | :error
+          | :leave_room
+          | :room_data
+          | :room_state
+          | :room_state_patch
+          | :ping
+          | :room_request
+          | :room_response
 
   @typedoc "Сырой кадр протокола."
   @type frame :: binary()

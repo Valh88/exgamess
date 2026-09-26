@@ -237,7 +237,12 @@ defmodule ExGames.Room.Server do
             }
 
             publish_listing(state)
-            :telemetry.execute([:ex_games, :room, :created], %{}, %{room_id: room_id, module: module})
+
+            :telemetry.execute([:ex_games, :room, :created], %{}, %{
+              room_id: room_id,
+              module: module
+            })
+
             {:ok, arm_tick(state)}
 
           {:stop, reason} ->
@@ -248,7 +253,6 @@ defmodule ExGames.Room.Server do
         {:stop, reason}
     end
   end
-
 
   def handle_call({:attach, session_id, pid, _options}, _from, %__MODULE__{} = state) do
     {seat, reserved} = Map.pop(state.reserved, session_id)
@@ -297,10 +301,15 @@ defmodule ExGames.Room.Server do
                   state_frame = push_state_snapshot(pid, state)
 
                   publish_listing(state)
-                  :telemetry.execute([:ex_games, :room, :join], %{count: map_size(state.clients)}, %{
-                    room_id: state.room_id,
-                    module: state.module
-                  })
+
+                  :telemetry.execute(
+                    [:ex_games, :room, :join],
+                    %{count: map_size(state.clients)},
+                    %{
+                      room_id: state.room_id,
+                      module: state.module
+                    }
+                  )
 
                   {:reply, {:ok, join_frame, state_frame}, state}
 
@@ -401,7 +410,11 @@ defmodule ExGames.Room.Server do
     do: {:reply, map_size(state.clients), state}
 
   @impl true
-  def handle_call({:reserve_seat, session_id, auth_data, options, ttl}, _from, %__MODULE__{} = state) do
+  def handle_call(
+        {:reserve_seat, session_id, auth_data, options, ttl},
+        _from,
+        %__MODULE__{} = state
+      ) do
     cond do
       state.locked ->
         {:reply, {:error, :locked}, state}
@@ -510,7 +523,6 @@ defmodule ExGames.Room.Server do
     close_all(state, 4000, "room closed")
     {:stop, :normal, state}
   end
-
 
   @impl true
   def handle_info({:DOWN, ref, :process, _pid, _exit_reason}, state) do
@@ -715,7 +727,14 @@ defmodule ExGames.Room.Server do
             {:stop, {:shutdown, reason}, %__MODULE__{state | user_state: user_state}}
 
           {:raise, exception, stacktrace} ->
-            log_callback_error(state.module, :handle_message, exception, stacktrace, state.room_id)
+            log_callback_error(
+              state.module,
+              :handle_message,
+              exception,
+              stacktrace,
+              state.room_id
+            )
+
             {:noreply, state}
 
           :callback_missing ->
@@ -789,7 +808,14 @@ defmodule ExGames.Room.Server do
             {:noreply, %__MODULE__{state | user_state: user_state}}
 
           {:raise, exception, stacktrace} ->
-            log_callback_error(state.module, :handle_request, exception, stacktrace, state.room_id)
+            log_callback_error(
+              state.module,
+              :handle_request,
+              exception,
+              stacktrace,
+              state.room_id
+            )
+
             push(client.pid, Wire.encode(:error, %{code: 526, message: "internal error"}))
             {:noreply, state}
 
@@ -826,6 +852,7 @@ defmodule ExGames.Room.Server do
     state = run_logic_leave(state, client, reason)
 
     publish_listing(state)
+
     :telemetry.execute([:ex_games, :room, :leave], %{count: map_size(state.clients)}, %{
       room_id: state.room_id,
       module: state.module
@@ -1033,7 +1060,6 @@ defmodule ExGames.Room.Server do
     end
   end
 
-
   defp log_callback_error(module, name, exception, stacktrace, room_id) do
     Logger.error(
       "[ex_games] #{module}.#{name}/… raised in room #{room_id}: " <>
@@ -1097,13 +1123,21 @@ defmodule ExGames.Room.Server do
 
   defp apply_auth(mod, fun, args, default_auth) do
     case safe_apply(mod, fun, args) do
-      {:ok, :ok} -> {:ok, default_auth}
-      {:ok, {:ok, auth}} -> {:ok, auth}
-      {:ok, {:error, reason}} -> {:error, reason}
+      {:ok, :ok} ->
+        {:ok, default_auth}
+
+      {:ok, {:ok, auth}} ->
+        {:ok, auth}
+
+      {:ok, {:error, reason}} ->
+        {:error, reason}
+
       {:raise, exception, stacktrace} ->
         log_callback_error(mod, fun, exception, stacktrace, "n/a")
         {:error, exception}
-      :callback_missing -> {:ok, default_auth}
+
+      :callback_missing ->
+        {:ok, default_auth}
     end
   end
 

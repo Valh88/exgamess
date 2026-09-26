@@ -1,11 +1,22 @@
+# Библиотека gamessa: проверки компиляции под целевые платформы.
+# (hxml без -main компилирует пакет gamessa целиком)
 -cp source
--cp example
--main example.Main
-
 -lib hxWebSockets
--lib utest
+gamessa
 
---js bin/example/Main.js
-# --interp
-# --cmd command
-# haxelib run formatter -s src   
+# JS (браузер / node):
+#   haxe build.hxml -js bin/gamessa.js
+# HashLink:
+#   haxe build.hxml -hl bin/gamessa.hl
+# Neko:
+#   haxe build.hxml -neko bin/gamessa.n
+
+# Тесты:
+#   haxe test.hxml               # юнит-тесты (utest, interp)
+#   haxe test_integration.hxml   # против живого сервера PORT=4100
+
+# Пример (чат):
+#   haxe example.hxml && neko bin/example.n
+
+# Форматирование:
+#   haxelib run formatter -s source -s test -s example

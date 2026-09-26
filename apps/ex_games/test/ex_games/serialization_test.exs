@@ -22,7 +22,9 @@ defmodule ExGames.SerializationTest do
         players: [%Player{name: "a", score: 1}, %Player{name: "b", score: 2}]
       })
 
-    assert wire == %{"players" => [%{"name" => "a", "score" => 1}, %{"name" => "b", "score" => 2}]}
+    assert wire == %{
+             "players" => [%{"name" => "a", "score" => 1}, %{"name" => "b", "score" => 2}]
+           }
   end
 
   test "plain values pass through" do

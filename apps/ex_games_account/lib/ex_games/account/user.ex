@@ -6,15 +6,16 @@ defmodule ExGames.Account.User do
   import Ecto.Changeset
 
   schema "users" do
-    field :username, :string
-    field :password, :string, virtual: true, redact: true
-    field :password_hash, :string, redact: true
-    field :banned_at, :utc_datetime
-    field :ban_reason, :string
+    field(:username, :string)
+    field(:password, :string, virtual: true, redact: true)
+    field(:password_hash, :string, redact: true)
+    field(:banned_at, :utc_datetime)
+    field(:ban_reason, :string)
 
-    many_to_many :roles, ExGames.Account.Role,
+    many_to_many(:roles, ExGames.Account.Role,
       join_through: "users_roles",
       on_replace: :delete
+    )
 
     timestamps(type: :utc_datetime)
   end

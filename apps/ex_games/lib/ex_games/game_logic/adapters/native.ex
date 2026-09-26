@@ -12,7 +12,6 @@ defmodule ExGames.GameLogic.Adapters.Native do
   процесса не теряет игру).
   """
 
-
   defmacro __using__(_opts) do
     quote do
       @behaviour ExGames.GameLogic.Adapter
@@ -24,7 +23,9 @@ defmodule ExGames.GameLogic.Adapters.Native do
 
         with {:ok, handle} <- open(opts),
              {:ok, %{"ok" => true, "state" => state}} <-
-               exchange(handle, %{"op" => "init", "args" => Keyword.get(opts, :args, [])},
+               exchange(
+                 handle,
+                 %{"op" => "init", "args" => Keyword.get(opts, :args, [])},
                  init_timeout
                ) do
           {:ok, %{transport: __MODULE__, handle: handle, state: state}}

@@ -52,7 +52,9 @@ defmodule ExGames.Account.Token.HMAC do
   def verify(token) do
     config = token_config()
 
-    case Plug.Crypto.verify(config.secret_key_base, config.salt, token, max_age: config.ttl_seconds) do
+    case Plug.Crypto.verify(config.secret_key_base, config.salt, token,
+           max_age: config.ttl_seconds
+         ) do
       {:ok, %{uid: uid}} when is_integer(uid) -> {:ok, uid}
       {:ok, _other} -> {:error, :invalid_token}
       {:error, reason} -> {:error, reason}

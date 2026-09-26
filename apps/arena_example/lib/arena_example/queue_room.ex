@@ -23,10 +23,14 @@ defmodule ArenaExample.QueueRoom do
     broadcast(room, "queue_join", %{"session_id" => client.session_id, "rank" => rank})
 
     {:ok,
-     Map.put(state, :waiting, Map.put(state.waiting, client.session_id, %{
-       rank: rank,
-       joined_at: System.monotonic_time(:millisecond)
-     }))}
+     Map.put(
+       state,
+       :waiting,
+       Map.put(state.waiting, client.session_id, %{
+         rank: rank,
+         joined_at: System.monotonic_time(:millisecond)
+       })
+     )}
   end
 
   @impl true

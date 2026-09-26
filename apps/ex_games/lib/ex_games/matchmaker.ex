@@ -185,8 +185,9 @@ defmodule ExGames.Matchmaker do
 
     :ets.insert(
       @ets,
-      {:__definitions__, {Map.put(definitions, room_name, module),
-       Map.put(filter_by, room_name, Keyword.get(opts, :filter_by, []))}}
+      {:__definitions__,
+       {Map.put(definitions, room_name, module),
+        Map.put(filter_by, room_name, Keyword.get(opts, :filter_by, []))}}
     )
 
     {:reply, :ok, state}
@@ -396,4 +397,3 @@ defmodule ExGames.Matchmaker do
     _ -> nil
   end
 end
-

@@ -36,6 +36,7 @@ defmodule ExGames.Account do
       {:ok, user} ->
         {:ok, _role, _} = grant_role(user, :player)
         {:ok, with_roles(user)}
+
       {:error, changeset} ->
         {:error, changeset_errors(changeset)}
     end
@@ -44,7 +45,7 @@ defmodule ExGames.Account do
   @doc "Вход по логину/паролю; возвращает подписанный токен."
   @spec login(String.t(), String.t()) :: result({:token, String.t(), User.t()})
   def login(username, password) when is_binary(username) and is_binary(password) do
-    user = Repo.one(from u in User, where: u.username == ^username, preload: [:roles])
+    user = Repo.one(from(u in User, where: u.username == ^username, preload: [:roles]))
 
     with {:ok, user} <- check_password(user, password),
          :ok <- check_not_banned(user) do
@@ -68,14 +69,14 @@ defmodule ExGames.Account do
   @doc "Профиль по имени."
   @spec fetch_user(String.t()) :: result(User.t())
   def fetch_user(username) do
-    case Repo.one(from u in User, where: u.username == ^username, preload: [:roles]) do
+    case Repo.one(from(u in User, where: u.username == ^username, preload: [:roles])) do
       nil -> {:error, :unknown_user}
       user -> {:ok, user}
     end
   end
 
   defp fetch_user_by_id(id) do
-    case Repo.one(from u in User, where: u.id == ^id, preload: [:roles]) do
+    case Repo.one(from(u in User, where: u.id == ^id, preload: [:roles])) do
       nil -> {:error, :unknown_user}
       user -> {:ok, user}
     end
@@ -130,16 +131,19 @@ defmodule ExGames.Account do
     do: revoke_role(user, Atom.to_string(role_name))
 
   def revoke_role(user, role_name) when is_binary(role_name) do
-    Repo.query!("DELETE FROM users_roles WHERE user_id = ? AND role_id = (SELECT id FROM roles WHERE name = ?)", [
-      user.id,
-      role_name
-    ])
+    Repo.query!(
+      "DELETE FROM users_roles WHERE user_id = ? AND role_id = (SELECT id FROM roles WHERE name = ?)",
+      [
+        user.id,
+        role_name
+      ]
+    )
 
     :ok
   end
 
   defp ensure_role(name) do
-    case Repo.one(from r in Role, where: r.name == ^name) do
+    case Repo.one(from(r in Role, where: r.name == ^name)) do
       nil -> Repo.insert(Role.changeset(%Role{}, %{name: name}))
       role -> {:ok, role}
     end

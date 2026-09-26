@@ -63,7 +63,9 @@ defmodule ArenaExample.ArenaIntegrationTest do
   test "register → matchmake arena → ws join → move → state broadcast" do
     token = register!("demo_#{System.unique_integer([:positive])}")
 
-    res = post!("/api/matchmake/join_or_create/arena", token, %{"options" => %{"mode" => "ranked"}})
+    res =
+      post!("/api/matchmake/join_or_create/arena", token, %{"options" => %{"mode" => "ranked"}})
+
     assert res["room_id"]
 
     {:ok, client} =
@@ -101,7 +103,10 @@ defmodule ArenaExample.ArenaIntegrationTest do
              )
 
     # hit по себе → счёт
-    ExGamesWeb.Test.WsClient.send_binary(client, Wire.encode(:room_data, {"hit", %{"target" => sid}}))
+    ExGamesWeb.Test.WsClient.send_binary(
+      client,
+      Wire.encode(:room_data, {"hit", %{"target" => sid}})
+    )
 
     assert {:room_state, %{"scores" => scores}} =
              ExGamesWeb.Test.WsClient.wait_where(
@@ -133,7 +138,10 @@ defmodule ArenaExample.ArenaIntegrationTest do
 
     _ = ExGamesWeb.Test.WsClient.wait_frame(client, {:room_data, "joined"})
 
-    ExGamesWeb.Test.WsClient.send_binary(client, Wire.encode(:room_data, {"say", %{"text" => "gg"}}))
+    ExGamesWeb.Test.WsClient.send_binary(
+      client,
+      Wire.encode(:room_data, {"say", %{"text" => "gg"}})
+    )
 
     assert {:room_data, "say", %{"text" => "gg"}} =
              ExGamesWeb.Test.WsClient.wait_frame(client, {:room_data, "say"})
@@ -149,10 +157,18 @@ defmodule ArenaExample.ArenaIntegrationTest do
     q2 = post!("/api/matchmake/join_or_create/queue", t2, %{"options" => %{"rank" => 1550}})
 
     {:ok, c1} =
-      ExGamesWeb.Test.WsClient.start_link("ws://127.0.0.1:#{@port}", q1["room_id"], q1["session_id"])
+      ExGamesWeb.Test.WsClient.start_link(
+        "ws://127.0.0.1:#{@port}",
+        q1["room_id"],
+        q1["session_id"]
+      )
 
     {:ok, c2} =
-      ExGamesWeb.Test.WsClient.start_link("ws://127.0.0.1:#{@port}", q2["room_id"], q2["session_id"])
+      ExGamesWeb.Test.WsClient.start_link(
+        "ws://127.0.0.1:#{@port}",
+        q2["room_id"],
+        q2["session_id"]
+      )
 
     # оба дождались "seat" с room_id арены (тиком очереди)
     seat1 = ExGamesWeb.Test.WsClient.wait_frame(c1, {:room_data, "seat"}, 5000)

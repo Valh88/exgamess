@@ -6,7 +6,7 @@ defmodule ExGames.Account.Role do
   @builtin [:player, :moderator, :admin]
 
   schema "roles" do
-    field :name, :string
+    field(:name, :string)
 
     timestamps(type: :utc_datetime)
   end

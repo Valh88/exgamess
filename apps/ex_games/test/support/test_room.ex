@@ -27,7 +27,11 @@ defmodule ExGames.Test.Room do
 
   @impl true
   def handle_leave(room, client, reason, state) do
-    broadcast(room, "left", %{"session_id" => client.session_id, "reason" => Atom.to_string(reason)})
+    broadcast(room, "left", %{
+      "session_id" => client.session_id,
+      "reason" => Atom.to_string(reason)
+    })
+
     {:ok, %{state | events: [{:leave, client.session_id} | state.events]}}
   end
 
@@ -68,7 +72,10 @@ defmodule ExGames.Test.FakeTransport do
 
   def attach!(room_id, session_id) do
     {:ok, transport} = start_link()
-    {:ok, join_frame, state_frame} = ExGames.Room.Server.attach(room_id, session_id, transport, %{})
+
+    {:ok, join_frame, state_frame} =
+      ExGames.Room.Server.attach(room_id, session_id, transport, %{})
+
     {transport, join_frame, state_frame}
   end
 

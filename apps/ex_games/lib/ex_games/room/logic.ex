@@ -72,7 +72,12 @@ defmodule ExGames.Room.Logic do
   @callback logic_join(room :: Room.handle(), client :: Client.t(), auth :: term(), state()) ::
               {:ok, state()} | {:stop, reason :: term(), state()}
 
-  @callback logic_leave(room :: Room.handle(), client :: Client.t(), reason :: Room.leave_reason(), state()) ::
+  @callback logic_leave(
+              room :: Room.handle(),
+              client :: Client.t(),
+              reason :: Room.leave_reason(),
+              state()
+            ) ::
               {:ok, state()}
 
   @callback logic_tick(elapsed_ms :: non_neg_integer(), state()) ::
@@ -99,8 +104,19 @@ defmodule ExGames.Room.Logic do
       @behaviour ExGames.Room.Logic
 
       import ExGames.Room,
-        only: [message: 6, request: 6, broadcast: 3, send_to: 4, kick: 2, lock: 1,
-               unlock: 1, set_metadata: 2, set_state: 2, clients: 1, count: 1]
+        only: [
+          message: 6,
+          request: 6,
+          broadcast: 3,
+          send_to: 4,
+          kick: 2,
+          lock: 1,
+          unlock: 1,
+          set_metadata: 2,
+          set_state: 2,
+          clients: 1,
+          count: 1
+        ]
 
       ExGames.Room.DSL.register_attributes(__MODULE__)
 

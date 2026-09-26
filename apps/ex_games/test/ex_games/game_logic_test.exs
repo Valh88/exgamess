@@ -28,7 +28,10 @@ defmodule ExGames.GameLogicTest do
     defmodule Rules do
       @moduledoc false
       def init(_args), do: %{score: 0, ticks: 0}
-      def call(state, "add", [amount]), do: {:ok, state.score + amount, Map.update!(state, :score, &(&1 + amount))}
+
+      def call(state, "add", [amount]),
+        do: {:ok, state.score + amount, Map.update!(state, :score, &(&1 + amount))}
+
       def call(_state, "fail", _args), do: {:error, :boom}
       def tick(state, dt), do: {:ok, Map.update!(state, :ticks, &(&1 + dt))}
     end

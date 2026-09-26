@@ -18,13 +18,17 @@ defmodule ExGames.GameLogic.Adapters.TCP do
 
     with {:ok, host_charlist} <- to_host(host),
          {:ok, socket} <-
-           :gen_tcp.connect(host_charlist, port, [
-             :binary,
-             {:packet, :raw, 4},
-             {:active, false},
-             {:nodelay, true}
-           ],
-           5_000) do
+           :gen_tcp.connect(
+             host_charlist,
+             port,
+             [
+               :binary,
+               {:packet, :raw, 4},
+               {:active, false},
+               {:nodelay, true}
+             ],
+             5_000
+           ) do
       {:ok, socket}
     end
   end
