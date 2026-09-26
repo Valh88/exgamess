@@ -24,7 +24,9 @@ defmodule ExGames.Matchmaking.PairsByRank do
     * `"max_rank_gap"` — максимальный разброс рангов в группе (по умолчанию `200`);
     * `"priority_after_ms"` — ожидание до приоритета (по умолчанию `10_000`).
 
-  Ранг игрок кладёт в auth-данных брони: `%{"rank" => 1500}`.
+  Ранг игрок кладёт в опциях join: `%{"options" => %{"rank" => 1500}}`
+  (через `logic_auth` он переезжает в auth); если сервер положил ранг
+  в auth сам (например, рейтинг из БД) — клиентское значение игнорируется.
 
   Своя стратегия подбора — такой же модуль `ExGames.Room.Logic`
   (`logic_join` ставит в очередь, `logic_tick` собирает матчи).
@@ -45,6 +47,22 @@ defmodule ExGames.Matchmaking.PairsByRank do
        priority_after_ms: Map.get(options, "priority_after_ms", 10_000),
        waiting: %{}
      }}
+  end
+
+  # Ранг приплывает в auth: либо сервер сам положил его туда (например,
+  # рейтинг из БД при брони — клиент не может соврать), либо из опций join.
+  # Серверное значение имеет приоритет над клиентским.
+  @impl true
+  def logic_auth(auth_data, options, _room) do
+    auth = auth_data || %{}
+
+    case auth do
+      %{"rank" => _} ->
+        {:ok, auth}
+
+      _ ->
+        {:ok, Map.put(auth, "rank", Map.get(options || %{}, "rank", 1000))}
+    end
   end
 
   @impl true

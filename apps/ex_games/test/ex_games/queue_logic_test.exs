@@ -135,6 +135,22 @@ defmodule ExGames.QueueLogicTest do
     assert [_] = eventual_seats(t2)
   end
 
+  test "rank arrives from join options via logic_auth", %{room_id: room_id, room_pid: pid} do
+    # HTTP-путь: auth содержит только user_id, ранг — в опциях брони
+    sid = ExGames.Id.session_id()
+    :ok = Server.reserve_seat(room_id, sid, %{"user_id" => 1}, %{"rank" => 1500})
+    {_transport, _join, _state} = FakeTransport.attach!(room_id, sid)
+
+    assert %{rank: 1500} = logic_state(pid).waiting[sid]
+
+    # серверный ранг в auth сильнее клиентских опций
+    sid2 = ExGames.Id.session_id()
+    :ok = Server.reserve_seat(room_id, sid2, %{"user_id" => 2, "rank" => 2000}, %{"rank" => 100})
+    {_t2, _j, _s} = FakeTransport.attach!(room_id, sid2)
+
+    assert %{rank: 2000} = logic_state(pid).waiting[sid2]
+  end
+
   test "leaving the queue removes the player from matchmaking", %{room_id: room_id, room_pid: pid} do
     {sid1, t1} = join!(room_id, 1000)
     {sid2, t2} = join!(room_id, 1010)

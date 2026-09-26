@@ -99,6 +99,29 @@ PING — соединение не рвётся во время простоя. 
 `onLeave(4003, "reconnect rejected: …")`. Ретраи с backoff — только для
 временных сбоев (сеть недоступна, 5xx).
 
+### Очередь подбора (`queue`)
+
+Демо-очередь (из `apps/arena_example`): игрок встаёт в очередь, сервер
+группирует по рангу и рассылает `{"seat": {room_id, session_id, rank}}` —
+по нему клиент подключается к матч-комнате:
+
+```haxe
+client.joinOrCreate("queue", {rank: 1500}, res -> {
+    var queue = client.connectRoom(res);
+
+    queue.onMessage.add(e -> {
+        if (e.type != "seat")
+            return;
+        var s:StringMap<Dynamic> = e.message;
+        var match = client.connectRoom(new SeatReservation(s.room_id, s.session_id));
+        match.onJoin.add(_ -> trace("in match!"));
+    });
+}, err -> trace(err));
+```
+
+Ранги сейчас клиентские (опции); для честного рейтинга — серверное значение
+из БД в auth (см. `ExGames.Matchmaking.PairsByRank.logic_auth`).
+
 ## Потоки и Dispatcher
 
 Весь API SDK неблокирующий на всех платформах: WS-подключение (включая
@@ -129,6 +152,14 @@ gamessa.util.Dispatcher.post = f -> mainThreadQueue.push(f);
 `gamessa.http.IHttpClient`, `gamessa.storage.IStorage` (например, передайте
 транспорт в `client.connectRoom(reservation, myTransport)`). HTTPS в
 `SysHttpClient` — через `sys.ssl.Socket` (HL/cpp/neko).
+
+**Заметка про HL:** в стдлибе Haxe (`std/hl/_std/sys/net/Socket.hx`)
+`Socket.select` использует общий статический буфер без блокировки — при
+нескольких WS-сокетах в одном процессе (auto-reconnect, очередь+матч)
+возникают гонки и спонтанные обрывы. Применён локальный патч стдлибы
+(мьютекс вокруг select; см. историю репозитория). При обновлении Haxe
+через scoop патч слетает — symptoms: спонтанные `connection lost` через
+несколько секунд при 2+ сокетах.
 
 ## Разработка
 

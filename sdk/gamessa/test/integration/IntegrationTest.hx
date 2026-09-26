@@ -147,6 +147,66 @@ class IntegrationTest extends utest.Test {
 		async.setTimeout(15000); // s -> Assert.fail("timed out waiting for reconnect"), 15);
 	}
 
+	function testQueueToMatchEndToEnd(async:Async):Void {
+		var c1 = makeClient();
+		var c2 = makeClient();
+		var finished = false;
+
+		newUser(c1, 'hx_${Std.int(Math.random() * 1000000)}', () -> {
+			newUser(c2, 'hx_${Std.int(Math.random() * 1000000)}', () -> {
+				var matchRooms:Map<String, String> = new Map(); // sessionId → room_id
+
+				function tryComplete():Void {
+					if (finished || Lambda.count(matchRooms) < 2)
+						return;
+
+					finished = true;
+
+					// оба в одной матч-комнате
+					var ids = Lambda.array(matchRooms);
+					Assert.equals(ids[0], ids[1]);
+					async.done();
+				}
+
+				function enterQueue(client:Client, tag:String):Void {
+					client.joinOrCreate("queue", {}, res -> {
+						var queue = client.connectRoom(res);
+
+						queue.onError.add(e -> trace('DBG $tag queue error: ${e.code} ${e.message}'));
+						queue.onDrop.add(_ -> trace('DBG $tag queue dropped'));
+
+						queue.onMessage.add(e -> {
+							if (e.type != "seat")
+								return;
+
+							trace('DBG $tag got seat');
+
+							// {"seat": {room_id, session_id, rank}} → вход в матч
+							var m:StringMap<Dynamic> = e.message;
+							var seatSession:String = m.get("session_id");
+							var match = client.connectRoom(new SeatReservation(m.get("room_id"), seatSession));
+
+							match.onJoin.add(je -> {
+								trace('DBG $tag match joined ${je.data.get("session_id")}');
+								Assert.equals(seatSession, je.data.get("session_id"));
+								matchRooms.set(tag, m.get("room_id"));
+								tryComplete();
+							});
+
+							match.onError.add(e2 -> trace('DBG $tag match error: ${e2.code} ${e2.message}'));
+							match.onDrop.add(_ -> trace('DBG $tag match dropped'));
+						});
+					}, err -> Assert.fail('queue join failed: $err'));
+				}
+
+				enterQueue(c1, "c1");
+				enterQueue(c2, "c2");
+			});
+		});
+
+		async.setTimeout(20000);
+	}
+
 	function testMatchmakeErrors(async:Async):Void {
 		var client = makeClient();
 
