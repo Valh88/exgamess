@@ -1,0 +1,7 @@
+{:ok, _} = Application.ensure_all_started(:ex_games_account)
+IO.inspect(ExGames.Account.Repo.config() |> Keyword.take([:database, :pool]), label: "cfg")
+owner = Ecto.Adapters.SQL.Sandbox.start_owner!(ExGames.Account.Repo, shared: false)
+IO.puts("owner ok")
+{:ok, user} = ExGames.Account.register(%{"username" => "probe1", "password" => "secret123"})
+IO.inspect(user.username, label: "registered")
+Ecto.Adapters.SQL.Sandbox.stop_owner(owner)

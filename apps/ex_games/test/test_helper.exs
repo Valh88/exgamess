@@ -1,0 +1,3 @@
+{:ok, _} = Application.ensure_all_started(:ex_games)
+
+ExUnit.start()
