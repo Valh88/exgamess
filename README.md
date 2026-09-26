@@ -73,7 +73,8 @@ mix test --include native      # + тесты Port-адаптера (spawn вн�
 `GET /ws/:room_id?sessionId=:session_id` — после апгрейда клиент и сервер
 обмениваются бинарными кадрами. Полная спецификация, включая формат кадров
 и коды ошибок — [PROTOCOL.md](doc/PROTOCOL.md); архитектура и supervision tree —
-[ARCHITECTURE.md](doc/ARCHITECTURE.md).
+[ARCHITECTURE.md](doc/ARCHITECTURE.md); поиск игры и рейтинги —
+[MATCHMAKING.md](doc/MATCHMAKING.md).
 
 ## Как писать игру
 
