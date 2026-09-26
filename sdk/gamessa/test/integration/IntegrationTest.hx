@@ -231,6 +231,26 @@ class IntegrationTest extends utest.Test {
 		async.setTimeout(10000);
 	}
 
+	function testDuplicateUsernameRejected(async:Async):Void {
+		var username = 'hx_${Std.int(Math.random() * 1000000)}';
+		var client = makeClient();
+
+		newUser(client, username, () -> {
+			// повторная регистрация под занятым логином — 422 с Ecto-ошибкой
+			var second = makeClient();
+			second.register(username, "secret123", _ -> {
+				Assert.fail("expected duplicate username to be rejected");
+			}, err -> {
+				Assert.equals(422, err.code);
+				// MatchMakeError разворачивает {"errors": {...}} в читаемый текст
+				Assert.isTrue(err.message.indexOf("username") >= 0);
+				async.done();
+			});
+		});
+
+		async.setTimeout(10000);
+	}
+
 	function testConnectFailureIsAsyncAndReconnectable(async:Async):Void {
 		var client = makeClient();
 

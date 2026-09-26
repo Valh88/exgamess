@@ -13,12 +13,22 @@ class MatchMakeError {
 		this.message = message;
 	}
 
-	/** Разбирает JSON-ответ сервера вида {"error": {"code": ..., "message": ...}}. */
+	/** Разбирает JSON-ответ сервера: {"error": {code, message}} или
+		ECTO-ошибки {"errors": {field: [messages]}}. */
 	public static function fromJson(status:Int, body:String):MatchMakeError {
 		try {
 			var parsed:Dynamic = haxe.Json.parse(body);
 			if (parsed != null && parsed.error != null)
 				return new MatchMakeError(parsed.error.code, parsed.error.message);
+			if (parsed != null && parsed.errors != null) {
+				var parts:Array<String> = [];
+				for (field in Reflect.fields(parsed.errors)) {
+					var msgs:Dynamic = Reflect.field(parsed.errors, field);
+					var text = Std.isOfType(msgs, Array) ? (msgs : Array<Dynamic>).join(", ") : Std.string(msgs);
+					parts.push('$field: $text');
+				}
+				return new MatchMakeError(status, parts.join("; "));
+			}
 		} catch (e:Dynamic) {}
 		return new MatchMakeError(status, body);
 	}
