@@ -128,6 +128,10 @@ defmodule ExGames.Matchmaker do
   @spec table() :: atom()
   def table, do: @ets
 
+  @doc "PubSub-топик для событий листинга (подписка лобби)."
+  @spec lobby_topic() :: String.t()
+  def lobby_topic, do: "ex_games:lobby"
+
   # -------------------------------------------------------------------------
   # GenServer
   # -------------------------------------------------------------------------
@@ -260,13 +264,16 @@ defmodule ExGames.Matchmaker do
           listing.clients < listing.max_clients and
           filters_match?(listing.metadata, options, filter_keys)
       end)
-      |> Enum.sort_by(&(&1.clients / &1.max_clients))
+      |> Enum.sort_by(&fill_ratio/1)
 
     case candidates do
       [] -> :error
       [listing | _] -> {:ok, listing.room_id}
     end
   end
+
+  defp fill_ratio(%{max_clients: :infinity, clients: clients}), do: {clients, 999_999}
+  defp fill_ratio(%{clients: clients, max_clients: max}), do: {clients, max}
 
   defp get_filter_keys(room_name) do
     [{_, {_defs, filter_by}}] = :ets.lookup(@ets, :__definitions__)

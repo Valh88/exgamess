@@ -23,9 +23,11 @@ defmodule ExGames.Application do
     children = [
       {Phoenix.PubSub, name: ExGames.PubSub},
       {Registry, keys: :unique, name: ExGames.RoomRegistry},
+      {Registry, keys: :unique, name: ExGames.LogicRegistry},
       {DynamicSupervisor, name: ExGames.RoomSupervisor},
       {DynamicSupervisor, name: ExGames.LogicSupervisor},
-      ExGames.Matchmaker
+      ExGames.Matchmaker,
+      ExGames.Presence
     ]
 
     Supervisor.start_link(children, strategy: :rest_for_one, name: ExGames.Supervisor)

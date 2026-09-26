@@ -17,7 +17,7 @@ defmodule ExGames.Wire do
   | 21 | `:room_request` | клиент → сервер (запрос с request_id) |
   | 22 | `:room_response` | сервер → клиент (ответ на request_id) |
 
-  Полная спецификация — `PROTOCOL.md` в корне репозитория.
+  Полная спецификация — `doc/PROTOCOL.md` в корне репозитория.
   """
 
   @typedoc "Код операции кадра."

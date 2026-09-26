@@ -10,6 +10,6 @@ defmodule ExGames do
       1. `POST /matchmake/:method/:room_name` (HTTP JSON) → seat reservation
       2. `WS /ws/:room_id?sessionId=...` — бинарные кадры `[opcode u8][msgpack]`
 
-  Полная спецификация протокола — `PROTOCOL.md` в корне репозитория.
+  Полная спецификация протокола — `doc/PROTOCOL.md` в корне репозитория.
   """
 end

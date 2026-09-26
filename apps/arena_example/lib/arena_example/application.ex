@@ -1,19 +1,18 @@
 defmodule ArenaExample.Application do
-  # See https://hexdocs.pm/elixir/Application.html
-  # for more information on OTP Applications
-  @moduledoc false
+  @moduledoc """
+  Boot демо-игры: регистрирует типы комнат в матчмейкере и стартует
+  системную лобби-комнату. Схема подтверждает расширяемость фреймворка —
+  игра объявляет себя без правок ядра.
+  """
 
   use Application
 
   @impl true
   def start(_type, _args) do
     children = [
-      # Starts a worker by calling: ArenaExample.Worker.start_link(arg)
-      # {ArenaExample.Worker, arg}
+      ArenaExample.Boot
     ]
 
-    # See https://hexdocs.pm/elixir/Supervisor.html
-    # for other strategies and supported options
     opts = [strategy: :one_for_one, name: ArenaExample.Supervisor]
     Supervisor.start_link(children, opts)
   end

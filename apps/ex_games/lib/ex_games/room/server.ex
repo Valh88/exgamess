@@ -418,7 +418,7 @@ defmodule ExGames.Room.Server do
   @impl true
   def terminate(reason, state) do
     close_all(state, 4001, "server shutdown")
-    :ets.delete(:ex_games_matchmaker_rooms, state.room_id)
+    unpublish_listing(state)
     :telemetry.execute([:ex_games, :room, :disposed], %{}, %{room_id: state.room_id})
 
     _ = safe_apply(state.module, :room_terminate, [reason, state.user_state])
@@ -680,6 +680,28 @@ defmodule ExGames.Room.Server do
     }
 
     :ets.insert(:ex_games_matchmaker_rooms, {state.room_id, listing})
+
+    Phoenix.PubSub.broadcast(
+      ExGames.PubSub,
+      ExGames.Matchmaker.lobby_topic(),
+      {:ex_games, :lobby, {:update, listing}}
+    )
+
+    :ok
+  end
+
+  # Убирает листинг комнаты из ETS и уведомляет лобби.
+  defp unpublish_listing(%__MODULE__{room_name: nil}), do: :ok
+
+  defp unpublish_listing(%__MODULE__{} = state) do
+    :ets.delete(:ex_games_matchmaker_rooms, state.room_id)
+
+    Phoenix.PubSub.broadcast(
+      ExGames.PubSub,
+      ExGames.Matchmaker.lobby_topic(),
+      {:ex_games, :lobby, {:remove, state.room_id}}
+    )
+
     :ok
   end
 

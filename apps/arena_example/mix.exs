@@ -31,8 +31,8 @@ defmodule ArenaExample.MixProject do
       {:ex_games, in_umbrella: true},
       {:ex_games_account, in_umbrella: true},
       {:ex_games_web, in_umbrella: true},
-      # WS-клиент для интеграционных тестов полного цикла.
-      # {:websock_client, "~> 0.2", only: :test} нет такого
+      # HTTP-клиент для интеграционных тестов (req прилетает с phoenix).
+      {:req, "~> 0.5", only: :test}
     ]
   end
 end
