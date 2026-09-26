@@ -106,7 +106,7 @@ PING — соединение не рвётся во время простоя. 
 по нему клиент подключается к матч-комнате:
 
 ```haxe
-client.joinOrCreate("queue", {rank: 1500}, res -> {
+client.joinOrCreate("queue", {}, res -> {
     var queue = client.connectRoom(res);
 
     queue.onMessage.add(e -> {
@@ -119,8 +119,9 @@ client.joinOrCreate("queue", {rank: 1500}, res -> {
 }, err -> trace(err));
 ```
 
-Ранги сейчас клиентские (опции); для честного рейтинга — серверное значение
-из БД в auth (см. `ExGames.Matchmaking.PairsByRank.logic_auth`).
+Ранг берётся **с сервера** (рейтинги Elo аккаунтов, ключ `game` — тип
+матч-комнаты; стартовый — 1000). Клиентский `"rank"` в опциях применяется
+только если серверный источник рангов не настроен (`:rank_source`).
 
 ## Потоки и Dispatcher
 

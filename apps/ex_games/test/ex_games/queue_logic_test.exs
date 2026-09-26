@@ -135,8 +135,14 @@ defmodule ExGames.QueueLogicTest do
     assert [_] = eventual_seats(t2)
   end
 
-  test "rank arrives from join options via logic_auth", %{room_id: room_id, room_pid: pid} do
-    # HTTP-путь: auth содержит только user_id, ранг — в опциях брони
+  test "options rank used only when no rank source is configured", %{
+    room_id: room_id,
+    room_pid: pid
+  } do
+    # источник не настроен (глобальный удалён) — клиентский ранг из опций
+    # остаётся единственным вариантом
+    Application.delete_env(:ex_games, :rank_source)
+
     sid = ExGames.Id.session_id()
     :ok = Server.reserve_seat(room_id, sid, %{"user_id" => 1}, %{"rank" => 1500})
     {_transport, _join, _state} = FakeTransport.attach!(room_id, sid)
@@ -176,12 +182,13 @@ defmodule ExGames.QueueLogicTest do
       assert %{rank: 1234} = logic_state(pid).waiting[sid]
     end
 
-    test "source :error falls back to options rank", %{room_id: room_id, room_pid: pid} do
+    test "source :error → базовый ранг, клиентский игнорируется", %{room_id: room_id, room_pid: pid} do
       sid = ExGames.Id.session_id()
       :ok = Server.reserve_seat(room_id, sid, %{"user_id" => 8}, %{"rank" => 77})
       FakeTransport.attach!(room_id, sid)
 
-      assert %{rank: 77} = logic_state(pid).waiting[sid]
+      # источник настроен, но ранга у игрока нет — клиентский 77 не применяется
+      assert %{rank: 1000} = logic_state(pid).waiting[sid]
     end
 
     test "source crash is treated as :error", %{room_id: room_id, room_pid: pid} do
@@ -189,7 +196,7 @@ defmodule ExGames.QueueLogicTest do
       :ok = Server.reserve_seat(room_id, sid, %{"user_id" => 9}, %{"rank" => 55})
       FakeTransport.attach!(room_id, sid)
 
-      assert %{rank: 55} = logic_state(pid).waiting[sid]
+      assert %{rank: 1000} = logic_state(pid).waiting[sid]
     end
 
     test "trusted auth rank beats the source", %{room_id: room_id, room_pid: pid} do

@@ -24,9 +24,10 @@ defmodule ExGames.Matchmaking.PairsByRank do
     * `"max_rank_gap"` — максимальный разброс рангов в группе (по умолчанию `200`);
     * `"priority_after_ms"` — ожидание до приоритета (по умолчанию `10_000`).
 
-  Ранг игрок кладёт в опциях join: `%{"options" => %{"rank" => 1500}}`
-  (через `logic_auth` он переезжает в auth); если сервер положил ранг
-  в auth сам (например, рейтинг из БД) — клиентское значение игнорируется.
+  Ранг берётся с сервера: если настроен `ExGames.Matchmaking.RankSource`
+  (в umbrella — рейтинги Elo аккаунтов), используется его значение, и
+  клиентский ранг из опций игнорируется (новому игроку — базовый 1000).
+  Клиентские опции `"rank"` применяются только когда источник не настроен.
 
   Своя стратегия подбора — такой же модуль `ExGames.Room.Logic`
   (`logic_join` ставит в очередь, `logic_tick` собирает матчи).
@@ -191,21 +192,26 @@ defmodule ExGames.Matchmaking.PairsByRank do
   end
 
   # -------------------------------------------------------------------------
-  # Разрешение ранга: auth-ранг (доверенный) → RankSource (серверное
-  # хранилище рейтингов) → клиентские опции → 1000.
+  # Разрешение ранга. Если источник серверных рейтингов настроен — ранг
+  # берётся ТОЛЬКО с сервера: auth-ранг (доверенный) → RankSource → 1000;
+  # клиентский ранг из опций игнорируется (новому игроку без строки рейтинга
+  # выдаётся базовый, а не заявленный клиентом). Без источника — клиентские
+  # опции как единственный вариант.
   # -------------------------------------------------------------------------
 
   defp resolve_rank(auth, state) do
+    source = rank_source(auth, state)
+    source_configured? = Application.get_env(:ex_games, :rank_source) != nil
+
     case auth do
-      %{"rank_source" => "options", "rank" => rank} ->
-        # клиентский ранг: серверное хранилище имеет приоритет
-        fallback(rank_source(auth, state), parse_rank(rank))
+      %{"rank" => rank, "rank_source" => "options"} ->
+        fallback(source, if(source_configured?, do: @default_rank, else: parse_rank(rank)))
 
       %{"rank" => rank} ->
         parse_rank(rank)
 
       _ ->
-        fallback(rank_source(auth, state), @default_rank)
+        fallback(source, @default_rank)
     end
   end
 
