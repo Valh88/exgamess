@@ -8,6 +8,7 @@
 	"releasenote": "",
 	"contributors": ["vano"],
 	"dependencies": {
+	  "hxWebSockets"
 	},
 	"classPath": "source"
 }

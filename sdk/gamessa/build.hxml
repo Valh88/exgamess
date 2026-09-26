@@ -2,7 +2,9 @@
 -cp example
 -main example.Main
 
-# -lib utest
+-lib hxWebSockets
+-lib utest
+
 --js bin/example/Main.js
 # --interp
 # --cmd command
