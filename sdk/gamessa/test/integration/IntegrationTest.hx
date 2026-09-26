@@ -161,6 +161,75 @@ class IntegrationTest extends utest.Test {
 
 		async.setTimeout(10000); // s -> Assert.fail("timed out"), 10);
 	}
+
+	function testLoginMeAndBadCredentials(async:Async):Void {
+		var username = 'hx_${Std.int(Math.random() * 1000000)}';
+		var client = makeClient();
+
+		// регистрируем пользователя первым клиентом
+		newUser(client, username, () -> {
+			// логин вторым клиентом: Bearer-токен должен примениться
+			var authed = makeClient();
+			authed.login(username, "secret123", auth -> {
+				Assert.notNull(auth.token);
+				Assert.equals(username, auth.user.username);
+
+				// me() с токеном — тот же пользователь
+				authed.me(data -> {
+					Assert.equals(username, data.user.username);
+
+					// неверный пароль — 401
+					var bad = makeClient();
+					bad.login(username, "wrong-password", _ -> {
+						Assert.fail("expected bad credentials");
+					}, err -> {
+						Assert.equals(401, err.code);
+						async.done();
+					});
+				}, err -> Assert.fail('me failed: $err'));
+			}, err -> Assert.fail('login failed: $err'));
+		});
+
+		async.setTimeout(10000);
+	}
+
+	function testTokenRestoreFromStorage(async:Async):Void {
+		var username = 'hx_${Std.int(Math.random() * 1000000)}';
+		var storage = new MapStorage();
+		var client = new Client(endpoint, null, storage);
+
+		newUser(client, username, () -> {
+			Assert.notNull(client.authToken);
+
+			// новый клиент с тем же storage восстанавливает токен
+			var restored = new Client(endpoint, null, storage);
+			Assert.isTrue(restored.restoreAuth());
+			Assert.equals(client.authToken, restored.authToken);
+
+			// и под восстановленным токеном matchmake работает
+			restored.joinOrCreate("chat", {channel: "global"}, reservation -> {
+				Assert.notNull(reservation.roomId);
+				async.done();
+			}, err -> Assert.fail('join with restored token failed: $err'));
+		});
+
+		async.setTimeout(10000);
+	}
+
+	function testUnauthorizedMatchmakeRejected(async:Async):Void {
+		// клиент без токена — сервер обязан ответить 401
+		var anonymous = makeClient();
+		Assert.isNull(anonymous.authToken);
+
+		anonymous.joinOrCreate("chat", {}, _ -> {
+			Assert.fail("expected 401 for anonymous matchmake");
+		}, err -> {
+			Assert.equals(401, err.code);
+			async.done();
+		});
+
+		async.setTimeout(10000);
+	}
 }
 
 /** In-memory storage для тестов (токен живёт в рамках клиента). */
