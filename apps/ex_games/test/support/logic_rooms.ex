@@ -6,7 +6,7 @@ defmodule ExGames.Test.ScoreLogic do
 
   @impl true
   def logic_init(options, _room) do
-    {:ok, %{scores: %{}, ticks: 0, name: Map.get(options, "name", "score")}}
+    {:ok, %{scores: %{}, ticks: 0, infos: [], name: Map.get(options, "name", "score")}}
   end
 
   @impl true
@@ -27,6 +27,9 @@ defmodule ExGames.Test.ScoreLogic do
 
   @impl true
   def logic_tick(_elapsed, state), do: {:ok, Map.update!(state, :ticks, &(&1 + 1))}
+
+  @impl true
+  def logic_info(msg, state), do: {:ok, Map.update(state, :infos, [msg], &[msg | &1])}
 
   message "add", %{"n" => n}, room, client, state do
     new = state.scores[client.session_id] + n

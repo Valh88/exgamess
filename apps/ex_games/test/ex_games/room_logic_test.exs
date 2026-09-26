@@ -111,6 +111,23 @@ defmodule ExGames.RoomLogicTest do
     assert Rooms.alive?(room_id)
   end
 
+  test "logic_info receives messages sent to the room process", %{room_id: room_id} do
+    sid = join!(room_id, %{})
+    {:ok, pid} = Rooms.lookup(room_id)
+
+    # внешний процесс шлёт произвольное сообщение в процесс комнаты
+    send(pid, {:external_event, "ping_from_world"})
+
+    assert eventually(fn ->
+             %{logics: logics} = :sys.get_state(pid)
+             %{infos: infos} = logic_state(logics, ExGames.Test.ScoreLogic)
+             Enum.any?(infos, &(&1 == {:external_event, "ping_from_world"}))
+           end)
+
+    assert Rooms.alive?(room_id)
+    assert is_binary(sid)
+  end
+
   # -------------------------------------------------------------------------
 
   defp join!(room_id, auth) do

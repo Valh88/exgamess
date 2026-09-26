@@ -229,9 +229,9 @@ defmodule ExGames.Room.Server do
           }
 
           case invoke_join(state, client, seat.auth) do
-            {:ok, state} ->
+            {:ok, %__MODULE__{} = state} ->
               case run_logic_join(state, client, seat.auth) do
-                {:ok, state} ->
+                {:ok, %__MODULE__{} = state} ->
                   ref = Process.monitor(pid)
 
                   state = %__MODULE__{
@@ -254,13 +254,13 @@ defmodule ExGames.Room.Server do
 
                   {:reply, {:ok, join_frame, state_frame}, state}
 
-                {:stop, reason, state} ->
+                {:stop, reason, %__MODULE__{} = state} ->
                   push(pid, Wire.encode(:error, %{code: 523, message: "join rejected"}))
                   push_close(pid, 4002, "join rejected")
                   {:stop, {:shutdown, {:join_rejected, session_id, reason}}, state}
               end
 
-            {:stop, reason, state} ->
+            {:stop, reason, %__MODULE__{} = state} ->
               push(pid, Wire.encode(:error, %{code: 523, message: "join rejected"}))
               push_close(pid, 4002, "join rejected")
               {:stop, {:shutdown, {:join_rejected, session_id, reason}}, state}
@@ -438,9 +438,16 @@ defmodule ExGames.Room.Server do
   end
 
   def handle_info(msg, %__MODULE__{} = state) do
+    # цепочка: комната (handle_info), затем модули логики (logic_info).
+    # Сюда попадают любые сообщения процесса комнаты, кроме служебных
+    # (:tick, :seat_expired, :DOWN) — например, PubSub-подписки и пуш
+    # от внешних процессов.
     case safe_apply(state.module, :handle_info, [msg, state.user_state]) do
-      {:ok, {:ok, user_state}} -> {:noreply, %__MODULE__{state | user_state: user_state}}
-      _ -> {:noreply, state}
+      {:ok, {:ok, user_state}} ->
+        run_logic_info(put_user_state(state, user_state), msg)
+
+      _ ->
+        run_logic_info(state, msg)
     end
   end
 
@@ -945,6 +952,36 @@ defmodule ExGames.Room.Server do
         _ -> acc
       end
     end)
+  end
+
+  defp put_user_state(%__MODULE__{} = state, user_state) do
+    %__MODULE__{state | user_state: user_state}
+  end
+
+  # Цепочка logic_info: любые не-служебные сообщения ящика комнаты
+  # (PubSub-подписки, пуш от внешних процессов и т.п.).
+  defp run_logic_info(%__MODULE__{} = state, msg) do
+    Enum.reduce_while(state.logics, {:noreply, state}, fn {mod, logic_state}, {:noreply, acc} ->
+      case safe_apply(mod, :logic_info, [msg, logic_state]) do
+        {:ok, {:ok, new_state}} ->
+          {:cont, {:noreply, put_logic(acc, mod, new_state)}}
+
+        {:ok, {:stop, reason, new_state}} ->
+          {:halt, stop_room(put_logic(acc, mod, new_state), reason)}
+
+        {:raise, exception, stacktrace} ->
+          log_callback_error(mod, :logic_info, exception, stacktrace, state.room_id)
+          {:cont, {:noreply, acc}}
+
+        :callback_missing ->
+          {:cont, {:noreply, acc}}
+      end
+    end)
+  end
+
+  defp stop_room(%__MODULE__{} = state, reason) do
+    close_all(state, 4002, "room stopped")
+    {:stop, {:shutdown, reason}, state}
   end
 
   defp run_logic_tick(%__MODULE__{} = state, elapsed) do

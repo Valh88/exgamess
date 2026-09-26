@@ -2,8 +2,6 @@ defmodule ExGames.RoomLifecycleTestHelpers do
   @moduledoc false
   # Хелперы ожидания кадров для интеграционных тестов ядра.
 
-  import ExUnit.Assertions
-
   alias ExGames.Wire
 
   @doc "Ждёт room_data заданного типа на транспорте FakeTransport."
