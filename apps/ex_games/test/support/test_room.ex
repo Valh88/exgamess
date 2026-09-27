@@ -58,6 +58,15 @@ defmodule ExGames.Test.Room do
   request "void", _payload, _room, _client, state do
     {:ok, state}
   end
+
+  request "boom_req", _payload, _room, _client, state do
+    raise "boom"
+    {:ok, state}
+  end
+
+  request "deny_req", _payload, _room, _client, state do
+    {:error, "denied by design", state}
+  end
 end
 
 defmodule ExGames.Test.FakeTransport do

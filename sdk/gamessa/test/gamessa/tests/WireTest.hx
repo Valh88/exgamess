@@ -78,9 +78,27 @@ class WireTest extends utest.Test {
 
 	function testGoldenErrorFrame() {
 		switch (Wire.decode(hex2bytes("0b82a76d657373616765a4626f6f6da4636f6465cd020e"))) {
-			case RoomError(code, message):
+			case RoomError(code, message, requestId):
 				Assert.equals(526, code);
 				Assert.equals("boom", message);
+				// прежний формат сервера: без request_id
+				Assert.equals(null, requestId);
+			case _:
+				Assert.fail("expected RoomError");
+		}
+	}
+
+	function testGoldenErrorFrameWithRequestId() {
+		// серверный кадр: {:error, %{code: 526, message: "boom", request_id: 42}}
+		var frame = Wire.decode(
+			hex2bytes("0b83a4636f6465cd020ea76d657373616765a4626f6f6daa726571756573745f69642a")
+		);
+
+		switch (frame) {
+			case RoomError(code, message, requestId):
+				Assert.equals(526, code);
+				Assert.equals("boom", message);
+				Assert.equals(42, requestId);
 			case _:
 				Assert.fail("expected RoomError");
 		}
@@ -157,9 +175,23 @@ class WireTest extends utest.Test {
 		Assert.equals(Wire.OP_ERROR, bytes.get(0));
 
 		switch (Wire.decode(bytes)) {
-			case RoomError(code, message):
+			case RoomError(code, message, requestId):
 				Assert.equals(526, code);
 				Assert.equals("boom", message);
+				Assert.equals(null, requestId);
+			case _:
+				Assert.fail("expected RoomError");
+		}
+	}
+
+	function testEncodeErrorWithRequestIdRoundtrip() {
+		var bytes = Wire.encode(RoomError(523, "join rejected", 7));
+
+		switch (Wire.decode(bytes)) {
+			case RoomError(code, message, requestId):
+				Assert.equals(523, code);
+				Assert.equals("join rejected", message);
+				Assert.equals(7, requestId);
 			case _:
 				Assert.fail("expected RoomError");
 		}

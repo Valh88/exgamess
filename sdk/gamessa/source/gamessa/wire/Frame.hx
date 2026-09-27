@@ -10,8 +10,12 @@ enum Frame {
 	/** Рукопожатие (сервер → клиент): room_id, session_id, reconnection_token. */
 	JoinRoom(data: StringMap<Dynamic>);
 
-	/** Ошибка протокола/приложения. */
-	RoomError(code: Int, message: String);
+	/**
+		Ошибка протокола/приложения. `requestId` не null, когда ошибка —
+		отклонение конкретного запроса (`Room.request`): клиент сразу
+		ресолвит pending, не дожидаясь таймаута.
+	*/
+	RoomError(code: Int, message: String, ?requestId: Null<Int>);
 
 	/** Согласованный выход (оба направления). */
 	LeaveRoom;

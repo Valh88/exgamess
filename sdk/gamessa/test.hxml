@@ -3,6 +3,8 @@
 -cp test
 -main RunTests
 -lib utest
+# RoomTest тянет Room → WebSocketTransport → hxWebSockets
+-lib hxWebSockets
 
 # interp (eval) — без внешних зависимостей; для node: замените на --js bin/RunTests.js + node bin/RunTests.js
 --interp

@@ -53,6 +53,13 @@ defmodule ExGames.WireTest do
       frame = Wire.encode(:error, %{code: 525, message: "auth failed"})
       assert {:ok, {:error, %{"code" => 525, "message" => "auth failed"}}} = Wire.decode(frame)
     end
+
+    test "error frame with request_id (отклонение конкретного запроса)" do
+      frame = Wire.encode(:error, %{code: 526, message: "internal error", request_id: 42})
+
+      assert {:ok, {:error, %{"code" => 526, "message" => "internal error", "request_id" => 42}}} =
+               Wire.decode(frame)
+    end
   end
 
   describe "decode errors" do

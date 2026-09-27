@@ -13,10 +13,12 @@ typedef JoinEvent = {
 	var data:StringMap<Dynamic>;
 }
 
-typedef ErrorEvent = {
-	var code:Int;
-	var message:String;
-}
+	typedef ErrorEvent = {
+		var code:Int;
+		var message:String;
+		/** request_id отклонённого запроса (null — ошибка не про запрос). */
+		var requestId:Null<Int>;
+	}
 
 typedef LeaveEvent = {
 	var code:Int;
@@ -144,9 +146,10 @@ class Room {
 	}
 
 	/**
-		Запрос-ответ: сервер отвечает RoomResponse с тем же request_id
-		или кадром RoomError (тогда колбэк reject с ошибкой 526... точнее —
-		ошибка приходит без request_id, поэтому reject по таймауту).
+		Запрос-ответ: сервер отвечает RoomResponse с тем же request_id.
+		Ошибка обработки приходит кадром RoomError с этим request_id —
+		колбэк onError вызывается сразу (серверы без поддержки request_id
+		в ошибках — fallback по таймауту).
 	*/
 	public function request(type:Dynamic, payload:Dynamic, ?timeoutMs:Int, onResult:Dynamic->Void, onError:MatchMakeError->Void):Void {
 		var requestId = nextRequestId++;
@@ -211,7 +214,7 @@ class Room {
 	function attach():Void {
 		connection.onOpen = () -> {};
 		connection.onMessage = bytes -> handleFrame(bytes);
-		connection.onError = message -> onError.dispatch({code: 0, message: message});
+		connection.onError = message -> onError.dispatch({code: 0, message: message, requestId: null});
 		connection.onClose = close -> handleClose(close);
 
 		connection.connect();
@@ -222,7 +225,7 @@ class Room {
 		try {
 			frame = Wire.decode(bytes);
 		} catch (e:Dynamic) {
-			onError.dispatch({code: Wire.ERR_INTERNAL, message: 'invalid frame: $e'});
+			onError.dispatch({code: Wire.ERR_INTERNAL, message: 'invalid frame: $e', requestId: null});
 			return;
 		}
 
@@ -251,8 +254,14 @@ class Room {
 				state = StatePatch.apply(state, payload);
 				onStateChange.dispatch(state);
 
-			case RoomError(code, message):
-				onError.dispatch({code: code, message: message});
+			case RoomError(code, message, requestId):
+				// ошибка про конкретный запрос — отклоняем только его;
+				// если pending уже нет (таймаут/не наш кадр) — общий onError
+				if (requestId != null && pending.exists(requestId)) {
+					rejectPending(requestId, new MatchMakeError(code, message));
+				} else {
+					onError.dispatch({code: code, message: message, requestId: requestId});
+				}
 
 			case Ping:
 				// ответ сервера на наш PING — резолвим RTT-замеры
@@ -298,6 +307,17 @@ class Room {
 		}
 
 		scheduleReconnect();
+	}
+
+	/** Отклоняет ожидающий запрос (снимая его таймаут-колбэк). */
+	function rejectPending(requestId:Int, err:MatchMakeError):Void {
+		var cb = pending.get(requestId);
+		if (cb != null) {
+			pending.remove(requestId);
+			if (cb.timer != null)
+				cb.timer.stop();
+			cb.reject(err);
+		}
 	}
 
 	function scheduleReconnect():Void {

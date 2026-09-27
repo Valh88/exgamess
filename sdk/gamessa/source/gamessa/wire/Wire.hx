@@ -46,8 +46,13 @@ class Wire {
 				// однобайтовые кадры
 			case JoinRoom(data):
 				out.add(MsgPack.encode(data));
-			case RoomError(code, message):
-				out.add(MsgPack.encode(map2("code", code, "message", message)));
+			case RoomError(code, message, requestId):
+				var m = map2("code", code, "message", message);
+
+				if (requestId != null)
+					m.set("request_id", requestId);
+
+				out.add(MsgPack.encode(m));
 			case RoomData(type, payload):
 				out.add(MsgPack.encode(map2("t", type, "p", payload)));
 			case RoomState(state):
@@ -90,7 +95,7 @@ class Wire {
 				return JoinRoom(checkMap(payload, op));
 			case OP_ERROR:
 				var m = checkMap(payload, op);
-				return RoomError(m.get("code"), m.get("message"));
+				return RoomError(m.get("code"), m.get("message"), m.get("request_id"));
 			case OP_ROOM_DATA:
 				var m = checkMap(payload, op);
 				return RoomData(m.get("t"), m.get("p"));

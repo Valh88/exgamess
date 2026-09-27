@@ -829,6 +829,13 @@ defmodule ExGames.Room.Server do
   end
 
   defp dispatch_request(%__MODULE__{} = state, client, request_id, type, payload) do
+    # ошибка обработки запроса уходит с request_id: клиент мгновенно
+    # отклоняет ожидающий запрос, не дожидаясь таймаута (поле опциональное —
+    # обратная совместимость с прежними клиентами)
+    error_frame = fn message ->
+      Wire.encode(:error, %{code: 526, message: message, request_id: request_id})
+    end
+
     case logic_for_request(state, type) do
       {mod, logic_state} ->
         case safe_apply(mod, :handle_request, [
@@ -851,16 +858,16 @@ defmodule ExGames.Room.Server do
 
           {:ok, {:error, reason, logic_state}} ->
             message = if is_binary(reason), do: reason, else: inspect(reason)
-            push(client.pid, Wire.encode(:error, %{code: 526, message: message}))
+            push(client.pid, error_frame.(message))
             {:noreply, put_logic(state, mod, logic_state)}
 
           {:raise, exception, stacktrace} ->
             log_callback_error(mod, :handle_request, exception, stacktrace, state.room_id)
-            push(client.pid, Wire.encode(:error, %{code: 526, message: "internal error"}))
+            push(client.pid, error_frame.("internal error"))
             {:noreply, state}
 
           :callback_missing ->
-            push(client.pid, Wire.encode(:error, %{code: 526, message: "unknown request"}))
+            push(client.pid, error_frame.("unknown request"))
             {:noreply, state}
         end
 
@@ -885,7 +892,7 @@ defmodule ExGames.Room.Server do
 
           {:ok, {:error, reason, user_state}} ->
             message = if is_binary(reason), do: reason, else: inspect(reason)
-            push(client.pid, Wire.encode(:error, %{code: 526, message: message}))
+            push(client.pid, error_frame.(message))
             {:noreply, %__MODULE__{state | user_state: user_state}}
 
           {:raise, exception, stacktrace} ->
@@ -897,11 +904,11 @@ defmodule ExGames.Room.Server do
               state.room_id
             )
 
-            push(client.pid, Wire.encode(:error, %{code: 526, message: "internal error"}))
+            push(client.pid, error_frame.("internal error"))
             {:noreply, state}
 
           :callback_missing ->
-            push(client.pid, Wire.encode(:error, %{code: 526, message: "unknown request"}))
+            push(client.pid, error_frame.("unknown request"))
             {:noreply, state}
         end
     end

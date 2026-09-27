@@ -90,8 +90,37 @@ defmodule ExGames.RoomLifecycleTest do
 
     FakeTransport.send_frame(room_id, sid1, Wire.encode(:room_request, {9, "nope", %{}}))
 
-    assert {:ok, {:error, %{"code" => 526, "message" => "unknown request"}}} =
+    assert {:ok, {:error, %{"code" => 526, "message" => "unknown request", "request_id" => 9}}} =
              Wire.decode(wait_for(t1, :error))
+  end
+
+  test "request errors carry request_id (raise, error, unknown)", %{room_id: room_id} do
+    {sid1, _} = join_two!(room_id)
+    [t1] = transports(room_id, [sid1])
+
+    # обработчик кидает исключение — клиент получает "internal error" со своим id
+    FakeTransport.send_frame(room_id, sid1, Wire.encode(:room_request, {5, "boom_req", %{}}))
+
+    assert {:ok, {:error, %{"code" => 526, "message" => "internal error", "request_id" => 5}}} =
+             Wire.decode(wait_for(t1, :error))
+
+    # обработчик возвращает {:error, reason, state} — reason в кадре, id свой
+    # (буфер транспорта копит ВСЕ кадры — ищем по request_id, не по первому :error)
+    FakeTransport.send_frame(room_id, sid1, Wire.encode(:room_request, {6, "deny_req", %{}}))
+
+    assert eventually(fn ->
+             FakeTransport.frames(t1, 100)
+             |> Enum.any?(fn f ->
+               match?(
+                 {:ok,
+                  {:error, %{"code" => 526, "message" => "denied by design", "request_id" => 6}}},
+                 Wire.decode(f)
+               )
+             end)
+           end)
+
+    # комната жива после исключения в обработчике
+    assert Rooms.alive?(room_id)
   end
 
   test "callback exception does not kill the room", %{room_id: room_id} do

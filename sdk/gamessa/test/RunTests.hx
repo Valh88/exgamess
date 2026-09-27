@@ -11,6 +11,7 @@ class RunTests {
 		runner.addCase(new gamessa.tests.MsgPackTest());
 		runner.addCase(new gamessa.tests.WireTest());
 		runner.addCase(new gamessa.tests.StatePatchTest());
+		runner.addCase(new gamessa.tests.RoomTest());
 
 		runner.onProgress.add(p -> {
 			for (a in p.result.assertations) {
