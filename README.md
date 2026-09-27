@@ -74,7 +74,8 @@ mix test --include native      # + тесты Port-адаптера (spawn вн�
 обмениваются бинарными кадрами. Полная спецификация, включая формат кадров
 и коды ошибок — [PROTOCOL.md](doc/PROTOCOL.md); архитектура и supervision tree —
 [ARCHITECTURE.md](doc/ARCHITECTURE.md); поиск игры и рейтинги —
-[MATCHMAKING.md](doc/MATCHMAKING.md).
+[MATCHMAKING.md](doc/MATCHMAKING.md); дельта-синхронизация состояния —
+[DELTA_SYNC.md](doc/DELTA_SYNC.md).
 
 ## Как писать игру
 
