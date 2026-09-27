@@ -71,3 +71,6 @@ config :phoenix_live_view,
 
 # Disable swoosh api client as it is only required for production adapters.
 config :swoosh, :api_client, false
+# 
+# ВРЕМЕННО (тест браузерного демо со статик-сервера :5500) — удалить после теста:
+config :ex_games_web, :cors_origin, "http://127.0.0.1:5500"
