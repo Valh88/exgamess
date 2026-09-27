@@ -120,6 +120,7 @@ class Main {
 		#end
 	}
 
+	#if !js
 	static function interactiveLoop(room:Room):Void {
 		var stdin = Sys.stdin();
 		Sys.println('type a message and press Enter ("/quit" to leave):');
@@ -136,6 +137,7 @@ class Main {
 				Dispatcher.post(() -> room.send("say", {text: text}));
 		}
 	}
+	#end
 
 	static function fail(err:MatchMakeError):Void {
 		trace('ERROR ${err.code}: ${err.message}');

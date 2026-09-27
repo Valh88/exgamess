@@ -2,7 +2,6 @@
 # (hxml без -main компилирует пакет gamessa целиком)
 -cp source
 -lib hxWebSockets
-gamessa
 
 # JS (браузер / node):
 #   haxe build.hxml -js bin/gamessa.js

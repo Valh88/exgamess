@@ -7,5 +7,4 @@
 
 # HashLink (основной, собирается этой командой):
 -hl bin/example.hl
-# Neko:     haxe example.hxml -neko bin/example.n  && neko bin/example.n
-# JS:       haxe example.hxml -js bin/example/main.js
+#-js bin/example/main.js
