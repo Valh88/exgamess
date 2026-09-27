@@ -6,5 +6,5 @@
 -lib hxWebSockets
 
 # HashLink (основной, собирается этой командой):
--hl bin/example.hl
-#-js bin/example/main.js
+#-hl bin/example.hl
+-js bin/example/main.js

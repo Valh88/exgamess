@@ -19,7 +19,7 @@ import haxe.ds.StringMap;
 	Интерактив: `<текст>` — сказать в канал, `/quit` — выйти.
 */
 class Main {
-	static final DEFAULT_ENDPOINT = "http://127.0.0.1:4100";
+	static final DEFAULT_ENDPOINT = "http://127.0.0.1:4000";
 
 	static function main() {
 		// эндпоинт можно передать первым аргументом:

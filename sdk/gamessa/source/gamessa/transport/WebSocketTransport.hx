@@ -122,7 +122,15 @@ class WebSocketTransport implements ITransport {
 	}
 
 	public function send(data:Bytes):Void {
+		#if js
+		// BytesBuffer.getBytes() на js возвращает Bytes поверх ArrayBuffer
+		// с запасом (правится только поле length), а hxWebSockets шлёт
+		// getData() целиком — кадр уезжал бы с хвостом нулей и сервер
+		// отвечал "invalid frame". sub() отдаёт ровно length байт.
+		_ws.send(data.sub(0, data.length));
+		#else
 		_ws.send(data);
+		#end
 	}
 
 	public function close():Void {
