@@ -38,6 +38,8 @@ defmodule ExGames.Room do
     * `:patch_rate` — частота тика, мс (по умолчанию `50`). Тик вызывает
       `handle_tick/2` (если определён) и рассылает состояние при изменении.
     * `:auto_dispose` — закрывать комнату, когда клиентов нет (по умолчанию `true`).
+    * `:auto_dispose_ms` — льготное окно перед авто-закрытием пустой комнаты, мс
+      (по умолчанию `0` — мгновенно). Новая бронь/клиент в окне отменяют закрытие.
     * `:rate_limit` — максимум сообщений от клиента в секунду (по умолчанию `120`).
     * `:reconnect_ttl` — окно переподключения после не-согласованного обрыва
       транспорта, мс (по умолчанию `30_000`; `false`/`0` — отключить: обрыв
@@ -57,7 +59,8 @@ defmodule ExGames.Room do
     * `handle_join(room, client, auth, state)`.
     * `handle_leave(room, client, reason, state)`.
     * `handle_tick(elapsed_ms, state)` — опционально.
-    * `handle_info(msg, state)` — опционально (по умолчанию игнор).
+    * `handle_info(msg, state)` — опционально (по умолчанию игнор); сюда же
+      доставляются таймеры Room clock — `{:ex_games_timer, key, msg}`.
     * `room_terminate(reason, state)` — опционально.
 
   ## DSL
@@ -69,8 +72,9 @@ defmodule ExGames.Room do
       запрос-ответ; тело возвращает `{:reply, payload, state}` или `{:ok, state}`.
 
   Внутри тела клавз доступны функции-эффекты `ExGames.Room`:
-  `broadcast/3`, `send_to/3`, `kick/2`, `lock/1`, `unlock/1`, `set_metadata/2`,
-  `set_state/2`, `clients/1`, `count/1`.
+  `broadcast/3`, `broadcast_except/4`, `send_to/4`, `kick/2`, `lock/1`,
+  `unlock/1`, `set_metadata/2`, `set_state/2`, `clients/1`, `count/1`,
+  таймеры clock `send_after/4`, `send_interval/4`, `cancel_timer/2`.
   """
 
   alias ExGames.Room.Client
@@ -138,6 +142,8 @@ defmodule ExGames.Room do
     max_clients: 8,
     patch_rate: 50,
     auto_dispose: true,
+    # льготное окно перед авто-закрытием пустой комнаты, мс (0 — мгновенно)
+    auto_dispose_ms: 0,
     rate_limit: 120,
     reconnect_ttl: 30_000,
     # :snapshot — полные ROOM_STATE на тике; :delta — патчи (opcode 15)
@@ -161,12 +167,16 @@ defmodule ExGames.Room do
           message: 6,
           request: 6,
           broadcast: 3,
+          broadcast_except: 4,
           send_to: 4,
           kick: 2,
           lock: 1,
           unlock: 1,
           set_metadata: 2,
           set_state: 2,
+          send_after: 4,
+          send_interval: 4,
+          cancel_timer: 2,
           clients: 1,
           count: 1
         ]
@@ -260,6 +270,47 @@ defmodule ExGames.Room do
   @spec broadcast(handle(), String.t() | integer(), term()) :: :ok
   def broadcast(%__MODULE__.Handle{} = room, type, payload) do
     GenServer.cast(via(room.room_id), {:broadcast, type, payload})
+  end
+
+  @doc """
+  Рассылает сообщение всем клиентам, кроме перечисленных в `except`
+  (один session_id или список). Типовой кейс — эхо: говорящий уже знает
+  свой текст.
+  """
+  @spec broadcast_except(
+          handle(),
+          ExGames.Id.id() | [ExGames.Id.id()],
+          String.t() | integer(),
+          term()
+        ) ::
+          :ok
+  def broadcast_except(%__MODULE__.Handle{} = room, except, type, payload) do
+    GenServer.cast(via(room.room_id), {:broadcast_except, except, type, payload})
+  end
+
+  @doc """
+  Одноразовый таймер комнаты: через `ms` в цепочку `handle_info` →
+  `logic_info` доставляется `{:ex_games_timer, key, msg}`. Повторный
+  вызов с тем же `key` отменяет прежний таймер (ключ уникален на комнату).
+  """
+  @spec send_after(handle(), term(), term(), non_neg_integer()) :: :ok
+  def send_after(%__MODULE__.Handle{} = room, key, msg, ms) when is_integer(ms) and ms > 0 do
+    GenServer.cast(via(room.room_id), {:send_after, key, msg, ms})
+  end
+
+  @doc """
+  Повторяющийся таймер: каждые `ms` доставляется `{:ex_games_timer, key, msg}`.
+  Останавливается `cancel_timer/2`, перезаписью ключа или остановкой комнаты.
+  """
+  @spec send_interval(handle(), term(), term(), non_neg_integer()) :: :ok
+  def send_interval(%__MODULE__.Handle{} = room, key, msg, ms) when is_integer(ms) and ms > 0 do
+    GenServer.cast(via(room.room_id), {:send_interval, key, msg, ms})
+  end
+
+  @doc "Отменяет таймер комнаты (`send_after`/`send_interval`) по ключу."
+  @spec cancel_timer(handle(), term()) :: :ok
+  def cancel_timer(%__MODULE__.Handle{} = room, key) do
+    GenServer.cast(via(room.room_id), {:cancel_timer, key})
   end
 
   @spec send_to(handle(), ExGames.Id.id(), String.t() | integer(), term()) :: :ok

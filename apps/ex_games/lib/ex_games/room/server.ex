@@ -53,7 +53,9 @@ defmodule ExGames.Room.Server do
           user_state: term(),
           logics: [{module(), term()}],
           tick_timer: reference() | nil,
-          last_tick: integer()
+          last_tick: integer(),
+          timers: %{term() => reference()},
+          dispose_timer: reference() | nil
         }
 
   defstruct room_id: nil,
@@ -75,7 +77,11 @@ defmodule ExGames.Room.Server do
             user_state: nil,
             logics: [],
             tick_timer: nil,
-            last_tick: 0
+            last_tick: 0,
+            # Room clock: расписание таймеров по ключам (Handle.send_after/send_interval)
+            timers: %{},
+            # льготное окно auto_dispose_ms (см. auto_dispose/1)
+            dispose_timer: nil
 
   # -------------------------------------------------------------------------
   # Управление жизненным циклом
@@ -291,11 +297,13 @@ defmodule ExGames.Room.Server do
 
                   ref = Process.monitor(pid)
 
-                  state = %__MODULE__{
-                    state
-                    | clients: Map.put(state.clients, session_id, client),
-                      monitors: Map.put(state.monitors, session_id, ref)
-                  }
+                  state =
+                    %__MODULE__{
+                      state
+                      | clients: Map.put(state.clients, session_id, client),
+                        monitors: Map.put(state.monitors, session_id, ref)
+                    }
+                    |> cancel_dispose_timer()
 
                   join_frame =
                     Wire.encode(:join_room, %{
@@ -440,7 +448,10 @@ defmodule ExGames.Room.Server do
             reserved =
               Map.put(state.reserved, session_id, %{auth: auth, options: options, timer: timer})
 
-            state = %__MODULE__{state | reserved: reserved}
+            state =
+              %__MODULE__{state | reserved: reserved}
+              |> cancel_dispose_timer()
+
             publish_listing(state)
             {:reply, :ok, state}
 
@@ -473,6 +484,36 @@ defmodule ExGames.Room.Server do
 
     {:noreply, state}
   end
+
+  def handle_cast({:broadcast_except, except, type, payload}, state) do
+    frame = Wire.encode(:room_data, {type, ExGames.Serialization.to_wire(payload)})
+    except = MapSet.new(List.wrap(except))
+
+    Enum.each(state.clients, fn {_sid, client} ->
+      unless MapSet.member?(except, client.session_id), do: push(client.pid, frame)
+    end)
+
+    {:noreply, state}
+  end
+
+  # -------------------------------------------------------------------------
+  # Room clock: управляемые таймеры (Handle.send_after/send_interval/cancel_timer)
+  # -------------------------------------------------------------------------
+
+  def handle_cast({:send_after, key, msg, ms}, %__MODULE__{} = state) do
+    state = cancel_timer(state, key)
+    timer = Process.send_after(self(), {:ex_games_timer, key, msg}, ms)
+    {:noreply, put_timer(state, key, timer)}
+  end
+
+  def handle_cast({:send_interval, key, msg, ms}, %__MODULE__{} = state) do
+    state = cancel_timer(state, key)
+    timer = Process.send_after(self(), {:ex_games_timer_fire, key, msg, ms}, ms)
+    {:noreply, put_timer(state, key, timer)}
+  end
+
+  def handle_cast({:cancel_timer, key}, %__MODULE__{} = state),
+    do: {:noreply, cancel_timer(state, key)}
 
   def handle_cast({:send_to, session_id, type, payload}, state) do
     case Map.get(state.clients, session_id) do
@@ -594,11 +635,40 @@ defmodule ExGames.Room.Server do
     {:noreply, state}
   end
 
+  def handle_info({:ex_games_timer, key, msg}, %__MODULE__{} = state) do
+    # одноразовый таймер: уходит из расписания, доставка — в обычную цепочку
+    state = %__MODULE__{state | timers: Map.delete(state.timers, key)}
+    deliver_info(state, {:ex_games_timer, key, msg})
+  end
+
+  def handle_info({:ex_games_timer_fire, key, msg, ms}, %__MODULE__{} = state) do
+    # повторяющийся: переармируем ДО доставки — интервал стабилен независимо
+    # от длительности обработчика (остановка комнаты умрёт вместе с таймером)
+    timer = Process.send_after(self(), {:ex_games_timer_fire, key, msg, ms}, ms)
+    deliver_info(put_timer(state, key, timer), {:ex_games_timer, key, msg})
+  end
+
+  def handle_info(:dispose_if_empty, %__MODULE__{} = state) do
+    state = %__MODULE__{state | dispose_timer: nil}
+
+    if empty?(state) do
+      {:stop, :normal, state}
+    else
+      {:noreply, state}
+    end
+  end
+
   def handle_info(msg, %__MODULE__{} = state) do
     # цепочка: комната (handle_info), затем модули логики (logic_info).
     # Сюда попадают любые сообщения процесса комнаты, кроме служебных
-    # (:tick, :seat_expired, :DOWN) — например, PubSub-подписки и пуш
-    # от внешних процессов.
+    # (:tick, :seat_expired, :DOWN, таймеры clock) — например, PubSub-подписки
+    # и пуш от внешних процессов.
+    deliver_info(state, msg)
+  end
+
+  # Доставка произвольного сообщения в цепочку handle_info → logic_info
+  # (общий путь для «чужих» сообщений и таймеров Room clock).
+  defp deliver_info(%__MODULE__{} = state, msg) do
     case safe_apply(state.module, :handle_info, [msg, state.user_state]) do
       {:ok, {:ok, user_state}} ->
         run_logic_info(put_user_state(state, user_state), msg)
@@ -610,6 +680,7 @@ defmodule ExGames.Room.Server do
 
   @impl true
   def terminate(reason, state) do
+    Enum.each(state.timers, fn {_key, timer} -> Process.cancel_timer(timer) end)
     close_all(state, 4001, "server shutdown")
     unpublish_listing(state)
     :telemetry.execute([:ex_games, :room, :disposed], %{}, %{room_id: state.room_id})
@@ -872,14 +943,34 @@ defmodule ExGames.Room.Server do
   end
 
   # Colyseus-поведение: комната без клиентов и без броней закрывается.
-  defp auto_dispose(state) do
+  # auto_dispose_ms > 0 откладывает закрытие на льготное окно — таймер
+  # :dispose_if_empty; новый клиент или бронь отменяют его (см. ниже),
+  # при срабатывании пустота перепроверяется.
+  defp auto_dispose(%__MODULE__{} = state) do
     auto? = Keyword.get(state.options, :auto_dispose, true)
 
-    if auto? and map_size(state.clients) == 0 and map_size(state.reserved) == 0 do
-      {:stop, :normal, state}
+    if auto? and empty?(state) do
+      case Keyword.get(state.options, :auto_dispose_ms, 0) do
+        ms when is_integer(ms) and ms > 0 ->
+          timer = Process.send_after(self(), :dispose_if_empty, ms)
+          {:noreply, %__MODULE__{state | dispose_timer: timer}}
+
+        _ ->
+          {:stop, :normal, state}
+      end
     else
       {:noreply, state}
     end
+  end
+
+  defp empty?(%__MODULE__{} = state),
+    do: map_size(state.clients) == 0 and map_size(state.reserved) == 0
+
+  defp cancel_dispose_timer(%__MODULE__{dispose_timer: nil} = state), do: state
+
+  defp cancel_dispose_timer(%__MODULE__{} = state) do
+    Process.cancel_timer(state.dispose_timer)
+    %__MODULE__{state | dispose_timer: nil}
   end
 
   # Не-согласованный обрыв: клиент остаётся в комнате (место занято), слот
@@ -1041,6 +1132,25 @@ defmodule ExGames.Room.Server do
   end
 
   defp state_sync(state), do: Keyword.get(state.options, :state_sync, :snapshot)
+
+  # -------------------------------------------------------------------------
+  # Room clock: расписание таймеров
+  # -------------------------------------------------------------------------
+
+  defp put_timer(%__MODULE__{} = state, key, timer),
+    do: %__MODULE__{state | timers: Map.put(state.timers, key, timer)}
+
+  # Перезапись ключа отменяет прежний таймер (key уникален на комнату).
+  defp cancel_timer(%__MODULE__{} = state, key) do
+    case Map.pop(state.timers, key) do
+      {nil, _timers} ->
+        state
+
+      {timer, timers} ->
+        Process.cancel_timer(timer)
+        %__MODULE__{state | timers: timers}
+    end
+  end
 
   defp push(pid, frame) when is_pid(pid), do: send(pid, {:ex_games_push, frame})
   defp push(_pid, _frame), do: :ok

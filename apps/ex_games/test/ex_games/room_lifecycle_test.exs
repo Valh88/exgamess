@@ -189,8 +189,7 @@ defmodule ExGames.RoomLifecycleTest do
              FakeTransport.frames(transport, 100)
              |> Enum.any?(fn f ->
                match?(
-                 {:ok,
-                  {:room_state_patch, %{"ops" => [%{"p" => ["nested", "x"], "v" => 5}]}}},
+                 {:ok, {:room_state_patch, %{"ops" => [%{"p" => ["nested", "x"], "v" => 5}]}}},
                  Wire.decode(f)
                )
              end)
@@ -208,6 +207,39 @@ defmodule ExGames.RoomLifecycleTest do
     {_t2, _join, snapshot} = FakeTransport.attach!(room_id, sid2)
     assert {:ok, {:room_state, %{"a" => 1, "nested" => %{"x" => 5}}}} = Wire.decode(snapshot)
 
+    GenServer.stop(pid, :normal)
+  end
+
+  test "broadcast_except delivers to everyone except the excluded session", %{room_id: _room_id} do
+    {:ok, room_id} = Rooms.start(ExGames.Test.ExceptRoom)
+
+    sids = for _ <- 1..3, do: ExGames.Id.session_id()
+
+    Enum.each(sids, fn sid ->
+      assert :ok = Server.reserve_seat(room_id, sid, %{}, %{})
+      FakeTransport.attach!(room_id, sid)
+    end)
+
+    [sender, lt1, lt2] = sids
+    [ts1, ts2] = transports(room_id, [lt1, lt2])
+
+    FakeTransport.send_frame(room_id, sender, Wire.encode(:room_data, {"say", %{"n" => 1}}))
+
+    # слушатели получают
+    assert {:ok, {:room_data, "say", %{"n" => 1}}} =
+             Wire.decode(wait_for(ts1, {:room_data, "say"}))
+
+    assert {:ok, {:room_data, "say", %{"n" => 1}}} =
+             Wire.decode(wait_for(ts2, {:room_data, "say"}))
+
+    # говорящий — нет
+    [sender_t] = transports(room_id, [sender])
+
+    refute Enum.any?(FakeTransport.frames(sender_t, 100), fn f ->
+             match?({:ok, {:room_data, "say", _}}, Wire.decode(f))
+           end)
+
+    {:ok, pid} = Rooms.lookup(room_id)
     GenServer.stop(pid, :normal)
   end
 

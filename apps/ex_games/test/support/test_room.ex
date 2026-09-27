@@ -114,3 +114,35 @@ defmodule ExGames.Test.FakeTransport do
     end
   end
 end
+
+defmodule ExGames.Test.ExceptRoom do
+  @moduledoc false
+  # Комната для тестов broadcast_except: пересказывает текст всем,
+  # кроме говорящего (его эхо-копия не нужна).
+
+  use ExGames.Room, max_clients: :infinity
+
+  @impl true
+  def room_init(_options, _room), do: {:ok, nil}
+
+  message "say", payload, room, client, state do
+    broadcast_except(room, client.session_id, "say", payload)
+    {:ok, state}
+  end
+end
+
+defmodule ExGames.Test.ClockRoom do
+  @moduledoc false
+  # Комната для тестов Room clock: копит таймерные попадания {:ex_games_timer,
+  # key, msg} в состояние (список {key, msg}, новые впереди).
+
+  use ExGames.Room, max_clients: :infinity, auto_dispose: false
+
+  @impl true
+  def room_init(_options, _room), do: {:ok, %{hits: []}}
+
+  @impl true
+  def handle_info({:ex_games_timer, key, msg}, state) do
+    {:ok, %{state | hits: [{key, msg} | state.hits]}}
+  end
+end
