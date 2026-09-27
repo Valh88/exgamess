@@ -46,8 +46,15 @@ class LoopbackTransport implements ITransport {
 }
 
 
+/** Wire-структура состояния тестовой комнаты (динамические ключи map'ов — Dynamic). */
+typedef TestState = {
+	var score(default, never):Int;
+	var players(default, never):Dynamic;
+}
+
+
 class RoomTest extends utest.Test {
-	function makeJoinedRoom():{room:Room, transport:LoopbackTransport} {
+	function makeJoinedRoom():{room:Room<Dynamic>, transport:LoopbackTransport} {
 		var client = new Client("http://127.0.0.1:4000");
 		var transport = new LoopbackTransport();
 		var room = new Room(client, new SeatReservation("room1", "s1"), transport);
@@ -57,6 +64,41 @@ class RoomTest extends utest.Test {
 		hello.set("reconnection_token", "tok");
 		transport.feed(JoinRoom(hello));
 		return {room: room, transport: transport};
+	}
+
+	function stringMap(kvs:Array<Dynamic>):StringMap<Dynamic> {
+		var m = new StringMap<Dynamic>();
+		for (i in 0...Std.int(kvs.length / 2))
+			m.set(kvs[i * 2], kvs[i * 2 + 1]);
+		return m;
+	}
+
+	function patchOp(path:Array<Dynamic>, v:Dynamic):Dynamic {
+		return stringMap(["p", path, "v", v]);
+	}
+
+	function testTypedStateSnapshotAndPatch() {
+		var client = new Client("http://127.0.0.1:4000");
+		var transport = new LoopbackTransport();
+		var room:Room<TestState> = new Room(client, new SeatReservation("room1", "s1"), transport);
+		var changes:Array<TestState> = [];
+		room.onStateChange.add(s -> changes.push(s));
+
+		// полный снапшот StringMap-деревом, как его декодирует MsgPack:
+		// {score: 1, players: {s1: {hp: 3}}}
+		var players = stringMap(["s1", stringMap(["hp", 3])]);
+		transport.feed(RoomState(stringMap(["score", 1, "players", players])));
+
+		// типизированный доступ: S = TestState, проверяется компилятором
+		Assert.equals(1, room.state.score);
+		Assert.equals(3, room.state.players.s1.hp);
+
+		// патч поверх анонимного дерева
+		transport.feed(RoomStatePatch(stringMap(["ops", [patchOp(["score"], 5)]])));
+		Assert.equals(5, room.state.score);
+		Assert.equals(3, room.state.players.s1.hp);
+		Assert.equals(2, changes.length);
+		Assert.equals(5, changes[1].score);
 	}
 
 	function testErrorFrameWithRequestIdRejectsPendingImmediately() {

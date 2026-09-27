@@ -202,9 +202,15 @@ class Client {
 	/**
 		Подключает Room по брони (шаг 2). Колбэк `onJoin` комнаты сработает
 		при рукопожатии; сюда Room возвращается сразу.
+
+		`S` — тип состояния комнаты (typedef от его wire-структуры), задаётся
+		аннотацией: `var room:Room<MyState> = client.connectRoom(reservation);`
+		Без аннотации состояние остаётся динамическим. Генерики Haxe стираются —
+		типизация compile-time; рантайм-представление — анонимные объекты
+		(динамические ключи map'ов — `Dynamic`).
 	*/
-	public function connectRoom(reservation:SeatReservation, ?transport:gamessa.transport.ITransport):Room {
-		return new Room(this, reservation, transport);
+	public function connectRoom<S>(reservation:SeatReservation, ?transport:gamessa.transport.ITransport):Room<S> {
+		return cast new Room(this, reservation, transport);
 	}
 
 	/** WS-эндпоинт, выведенный из http-эндпоинта. */

@@ -73,6 +73,20 @@ TLS: конструктор — `new Client(endpoint, ?http, ?storage, verifyCer
 Сигналы: `onJoin`, `onMessage`, `onStateChange`, `onError`, `onDrop`,
 `onLeave` (`gamessa.util.Signal<T>`, `add()` возвращает функцию отписки).
 
+Состояние типизируется параметром `Room<S>` — typedef от wire-структуры
+состояния комнаты (анонимные объекты; динамические ключи map'ов — `Dynamic`):
+
+```haxe
+typedef ArenaState = {var mode(default, never):String; var tick(default, never):Int;
+    var players(default, never):Dynamic; var scores(default, never):Dynamic;}
+
+var room:Room<ArenaState> = client.connectRoom(reservation);
+room.onStateChange.add(s -> trace('mode=${s.mode} tick=${s.tick}'));
+```
+
+Без аннотации состояние динамическое. Генерики стираются — типизация
+compile-time, сервер структуру не валидирует.
+
 | метод | назначение |
 |---|---|
 | `send(type, payload)` | сообщение (до JOIN буферизуется, cap `bufferLimit`) |

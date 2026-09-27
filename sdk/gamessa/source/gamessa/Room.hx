@@ -47,7 +47,7 @@ typedef RequestCallback = {
 	`send` до JOIN буферизуется (flush после рукопожатия); при обрыве —
 	буферизуется до reconnect (cap `bufferLimit`).
 */
-class Room {
+class Room<S> {
 	public var client(default, null):Client;
 	public var reservation(default, null):SeatReservation;
 	public var roomId(get, null):String;
@@ -60,7 +60,7 @@ class Room {
 
 	public var onJoin(default, null):Signal<JoinEvent> = new Signal();
 	public var onMessage(default, null):Signal<{type:Dynamic, message:Dynamic}> = new Signal();
-	public var onStateChange(default, null):Signal<Dynamic> = new Signal();
+	public var onStateChange(default, null):Signal<S> = new Signal();
 	public var onError(default, null):Signal<ErrorEvent> = new Signal();
 	/** Не-согласованный обрыв: начат auto-reconnect (payload — null). */
 	public var onDrop(default, null):Signal<Dynamic> = new Signal();
@@ -112,8 +112,10 @@ class Room {
 	var retry:Int = 0;
 	var pingSentAt:Float = 0;
 
-	/** Последний снапшот состояния (после onStateChange). */
-	public var state(default, null):Dynamic;
+	/** Последний снапшот состояния (после onStateChange). Анонимное дерево,
+		типизированное параметром `S` (typedef от wire-структуры комнаты);
+		динамические ключи (sid → значение) — `Dynamic`. */
+	public var state(default, null):Null<S>;
 
 	public function new(client:Client, reservation:SeatReservation, ?transport:ITransport) {
 		this.client = client;
@@ -245,13 +247,16 @@ class Room {
 				onMessage.dispatch({type: type, message: payload});
 
 			case RoomState(payload):
-				state = payload;
-				onStateChange.dispatch(payload);
+				// снапшот конвертируется в анонимные объекты (StatePatch.toAnon) —
+				// только у них прямые поля работают на всех таргетах; тип S
+				// задаёт вызывающий (Room<S>)
+				state = cast StatePatch.toAnon(payload);
+				onStateChange.dispatch(state);
 
 			case RoomStatePatch(payload):
-				// дельта: применяем операции к дереву состояния;
+				// дельта: применяем операции к анонимному дереву состояния;
 				// onStateChange срабатывает на каждый патч (как в Colyseus)
-				state = StatePatch.apply(state, payload);
+				state = cast StatePatch.applyAnon(state, payload);
 				onStateChange.dispatch(state);
 
 			case RoomError(code, message, requestId):

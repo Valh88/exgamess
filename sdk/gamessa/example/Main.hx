@@ -152,7 +152,7 @@ class Main {
 	}
 
 	#if !js
-	static function interactiveLoop(room:Room):Void {
+	static function interactiveLoop(room:Room<Dynamic>):Void {
 		var stdin = Sys.stdin();
 		Sys.println('type a message and press Enter ("/quit" to leave):');
 

@@ -115,4 +115,75 @@ class StatePatchTest {
 		Assert.equals(state, StatePatch.apply(state, new StringMap<Dynamic>()));
 		Assert.equals(state, StatePatch.apply(state, null));
 	}
+
+	// ------------------------------------------------------------------
+	// anon-режим (представление Room.state)
+	// ------------------------------------------------------------------
+
+	function testToAnonConvertsDeep() {
+		var anon = StatePatch.toAnon(tree());
+
+		Assert.equals("ranked", anon.mode);
+		Assert.equals(0, anon.players.s1.x);
+		Assert.equals(0, anon.players.s1.y);
+	}
+
+	function testToAnonInsideArrays() {
+		var s = map(["a", 1]);
+		var anon = StatePatch.toAnon([s, 7]);
+		var arr:Array<Dynamic> = anon;
+
+		Assert.equals(2, arr.length);
+		Assert.equals(1, arr[0].a);
+		Assert.equals(7, arr[1]);
+	}
+
+	function testApplyAnonNestedSetAndCreate() {
+		var state:Dynamic = {};
+		state = StatePatch.applyAnon(state, payload([op(["players", "s1", "x"], 10)]));
+		Assert.equals(10, state.players.s1.x);
+
+		state = StatePatch.applyAnon(state, payload([op(["players", "s1", "y"], 3), op(["mode"], "ranked")]));
+		Assert.equals(3, state.players.s1.y);
+		Assert.equals(10, state.players.s1.x);
+		Assert.equals("ranked", state.mode);
+	}
+
+	function testApplyAnonDeleteAndRootReplace() {
+		var state:Dynamic = {a: 1, b: {c: 2}};
+		state = StatePatch.applyAnon(state, payload([del(["b"])]));
+		Assert.isFalse(Reflect.hasField(state, "b"));
+		Assert.isTrue(Reflect.hasField(state, "a"));
+
+		state = StatePatch.applyAnon(state, payload([op([], 42)]));
+		Assert.equals(42, state);
+	}
+
+	function testApplyAnonConvertsOpValues() {
+		var v = map(["x", 1, "y", 2]);
+		var state:Dynamic = {};
+		state = StatePatch.applyAnon(state, payload([op(["p"], v), op(["l"], [v])]));
+
+		Assert.equals(1, state.p.x);
+		Assert.equals(2, state.p.y);
+		Assert.equals(1, state.l[0].x);
+	}
+
+	function testApplyAnonMigratesLegacyStringMapState() {
+		// состояние, накопленное старым кодом (StringMap), мигрирует при первом патче
+		var state:Dynamic = tree();
+		state = StatePatch.applyAnon(state, payload([op(["tick"], 5)]));
+
+		Assert.equals("ranked", state.mode);
+		Assert.equals(0, state.players.s1.x);
+		Assert.equals(5, state.tick);
+	}
+
+	function testApplyAnonNullState() {
+		var state = StatePatch.applyAnon(null, payload([op(["k"], 1)]));
+		Assert.equals(1, state.k);
+
+		state = StatePatch.applyAnon(state, null);
+		Assert.equals(1, state.k);
+	}
 }

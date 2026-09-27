@@ -12,6 +12,15 @@ import utest.Async;
 	Полный цикл против живого сервера: регистрация → matchmake → WS-join →
 	send/broadcast → request → ping → обрыв → reconnect → leave.
 */
+
+/** Wire-структура состояния арены (ArenaExample.Rules); ключи map'ов (sid → …) — Dynamic. */
+typedef ArenaState = {
+	var mode(default, never):String;
+	var tick(default, never):Int;
+	var players(default, never):Dynamic;
+	var scores(default, never):Dynamic;
+}
+
 class IntegrationTest extends utest.Test {
 	final endpoint:String;
 	final verifyCert:Bool;
@@ -32,7 +41,7 @@ class IntegrationTest extends utest.Test {
 		client.register(username, "secret123", _ -> done(), err -> Assert.fail('register failed: $err'));
 	}
 
-	function joinChat(client:Client, onRoom:Room->Void):Void {
+	function joinChat(client:Client, onRoom:Room<Dynamic>->Void):Void {
 		client.joinOrCreate("chat", {channel: "global"}, reservation -> {
 			var room = client.connectRoom(reservation);
 			onRoom(room);
@@ -418,6 +427,42 @@ class IntegrationTest extends utest.Test {
 		});
 
 		async.setTimeout(15000);
+	}
+
+	/**
+		Типизированное состояние (Room<S>): снапшот + патч на живой арене.
+		S = ArenaState проверяется компилятором; map'ы sid → значение — Dynamic.
+	*/
+	function testTypedArenaState(async:Async):Void {
+		var client = makeClient();
+
+		newUser(client, 'hx_${Std.int(Math.random() * 1000000)}', () -> {
+			client.joinOrCreate("arena", {mode: "typed"}, res -> {
+				var room:Room<ArenaState> = client.connectRoom(res);
+
+				room.onStateChange.add(s -> {
+					// типизированные поля (проверка compile-time)
+					Assert.equals("typed", s.mode);
+					Assert.isTrue(s.tick >= 0);
+
+					var me:Dynamic = Reflect.field(s.players, room.sessionId);
+					if (me == null)
+						return;
+					if (me.x != 10) {
+						room.send("move", {x: 10, y: 20});
+						return;
+					}
+
+					// патч после move применился в типизированное состояние
+					Assert.equals(20, me.y);
+					Assert.equals(0, Reflect.field(s.scores, room.sessionId));
+					room.leave();
+					async.done();
+				});
+			}, err -> Assert.fail('arena join failed: $err'));
+		});
+
+		async.setTimeout(10000);
 	}
 }
 
