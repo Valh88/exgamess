@@ -20,6 +20,13 @@ class SysHttpClient implements IHttpClient {
 	/** Таймаут соединения/чтения, мс. */
 	public var timeoutMs:Int = 10_000;
 
+	/**
+		`false` — не проверять серверный сертификат при https
+		(dev-стенды с самоподписанным сертификатом; hl/cpp/neko).
+		Прод с CA-сертификатом оставляет true (по умолчанию).
+	*/
+	public var verifyCert:Bool = true;
+
 	static final URL_RE = ~/^(\w+):\/\/([^\/:]+)(?::(\d+))?(\/.*)?$/;
 
 	public function new() {}
@@ -91,8 +98,12 @@ class SysHttpClient implements IHttpClient {
 
 	function makeSocket(scheme:String):Socket {
 		#if (hl || cpp || neko)
-		if (scheme == "https")
-			return new SecureSocket();
+		if (scheme == "https") {
+			var secure:SecureSocket = new SecureSocket();
+			if (!verifyCert)
+				secure.verifyCert = false;
+			return secure;
+		}
 		#end
 		if (scheme == "https")
 			throw new HttpError("https is not supported on this target");

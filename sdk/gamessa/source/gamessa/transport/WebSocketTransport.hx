@@ -30,10 +30,16 @@ class WebSocketTransport implements ITransport {
 	var _closing:Bool = false;
 	var _notified:Bool = false;
 
-	public function new(url:String) {
+	/**
+		`verifyCert = false` — не проверять серверный сертификат при wss
+		(dev-стенды с самоподписанным сертификатом; hl/cpp/neko). На js флаг
+		не действует — сертификат проверяет браузер (доверие импортируется
+		вручную). Прод с CA-сертификатом оставляет true (по умолчанию).
+	*/
+	public function new(url:String, verifyCert = true) {
 		// immediateOpen=false: соединение открываем в connect(), после
 		// назначения колбэков (на sys-таргетах поток чтения стартует в open())
-		_ws = new HxWebSocket(url, false);
+		_ws = verifyCert ? new HxWebSocket(url, false) : new WebSocketNoVerify(url, false);
 		#if !js
 		// hx.ws на sys-таргетах шлёт рукопожатие абсолютным URI
 		// ("GET ws://host/path"), который серверы отвергают

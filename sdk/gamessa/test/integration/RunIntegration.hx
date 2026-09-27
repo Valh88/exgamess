@@ -9,7 +9,11 @@ import utest.ui.Report;
 	Интеграционные тесты против живого сервера (PORT=4100, `mix phx.server`
 	в корне репозитория). Если сервер не поднят — тесты пропускаются.
 	Эндпоинт переопределяется переменной GAMESSA_ENDPOINT (например
-	`GAMESSA_ENDPOINT=https://localhost:4001` — самоподписанный dev-стенд).
+	`GAMESSA_ENDPOINT=https://localhost:4001` — самоподписанный dev-стенд;
+	клиенту выставляется verifyCert = false — проверка серверного сертификата
+	отключается и на WS, и на HTTP. Альтернатива на весь процесс —
+	`sys.ssl.Socket.DEFAULT_VERIFY_CERT = false`; js сертификат проверяет
+	браузером — доверие импортируется вручную).
 
 	    haxe test_integration.hxml   # interp; варианты -neko/-hl/-js в файле
 */
@@ -19,30 +23,23 @@ class RunIntegration {
 	static function main() {
 		#if js
 		var endpoint = "http://127.0.0.1:4100";
+		var verifyCert = true;
 		#else
 		var endpoint = Sys.getEnv("GAMESSA_ENDPOINT") != null ? Sys.getEnv("GAMESSA_ENDPOINT") : "http://127.0.0.1:4100";
-
-		// Самоподписанный dev-стенд (https/wss): отключаем проверку
-		// сертификата — это разом действует и на WS (hxWebSockets), и на
-		// HTTP (SysHttpClient), т.к. оба сидят на sys.ssl.Socket. JS проверяет
-		// сертификат средствами браузера (импортировать в доверенные).
-		#if (hl || cpp || neko)
-		if (StringTools.startsWith(endpoint, "https"))
-			sys.ssl.Socket.DEFAULT_VERIFY_CERT = false;
-		#end
+		var verifyCert = !StringTools.startsWith(endpoint, "https");
 		#end
 
 		#if js
-		var client = new Client(endpoint);
-		client.getAvailableRooms(_ -> start(endpoint), err -> {
+		var client = new Client(endpoint, null, null, verifyCert);
+		client.getAvailableRooms(_ -> start(endpoint, verifyCert), err -> {
 			Sys.println('SKIPPED: live server at $endpoint is not reachable (${err.message})');
 		});
 		#elseif (eval || hl)
 		// колбэки HTTP/WS приходят из фоновых потоков; haxe.Timer требует
 		// event loop потока — маршалим всё в главный поток с его event loop
-		sys.thread.Thread.runWithEventLoop(() -> startMarshaled(endpoint));
+		sys.thread.Thread.runWithEventLoop(() -> startMarshaled(endpoint, verifyCert));
 		#else
-		start(endpoint);
+		start(endpoint, verifyCert);
 		#end
 	}
 
@@ -51,14 +48,14 @@ class RunIntegration {
 	static var lock:sys.thread.Mutex = new sys.thread.Mutex();
 	static var pending:Array<Void->Void> = [];
 
-	static function startMarshaled(endpoint:String):Void {
+	static function startMarshaled(endpoint:String, verifyCert:Bool):Void {
 		Dispatcher.post = f -> {
 			lock.acquire();
 			pending.push(f);
 			lock.release();
 		};
 		pump();
-		probe(endpoint);
+		probe(endpoint, verifyCert);
 	}
 
 	static function pump():Void {
@@ -72,8 +69,8 @@ class RunIntegration {
 		haxe.Timer.delay(pump, 1);
 	}
 
-	static function probe(endpoint:String):Void {
-		var client = new Client(endpoint);
+	static function probe(endpoint:String, verifyCert:Bool):Void {
+		var client = new Client(endpoint, null, null, verifyCert);
 		var responded = false;
 		var reachable = false;
 
@@ -97,16 +94,16 @@ class RunIntegration {
 				Sys.exit(0);
 			}
 
-			start(endpoint);
+			start(endpoint, verifyCert);
 		}
 
 		haxe.Timer.delay(check, 50);
 	}
 	#end
 
-	static function start(endpoint:String):Void {
+	static function start(endpoint:String, verifyCert:Bool):Void {
 		var runner = new Runner();
-		runner.addCase(new IntegrationTest(endpoint));
+		runner.addCase(new IntegrationTest(endpoint, verifyCert));
 
 		runner.onProgress.add(p -> {
 			for (a in p.result.assertations) {

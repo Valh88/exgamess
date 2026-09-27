@@ -14,14 +14,16 @@ import utest.Async;
 */
 class IntegrationTest extends utest.Test {
 	final endpoint:String;
+	final verifyCert:Bool;
 
-	public function new(endpoint:String) {
+	public function new(endpoint:String, verifyCert:Bool = true) {
 		super();
 		this.endpoint = endpoint;
+		this.verifyCert = verifyCert;
 	}
 
 	function makeClient():Client {
-		var client = new Client(endpoint);
+		var client = new Client(endpoint, null, null, verifyCert);
 		client.storage = new MapStorage();
 		return client;
 	}
@@ -256,13 +258,13 @@ class IntegrationTest extends utest.Test {
 	function testTokenRestoreFromStorage(async:Async):Void {
 		var username = 'hx_${Std.int(Math.random() * 1000000)}';
 		var storage = new MapStorage();
-		var client = new Client(endpoint, null, storage);
+		var client = new Client(endpoint, null, storage, verifyCert);
 
 		newUser(client, username, () -> {
 			Assert.notNull(client.authToken);
 
 			// новый клиент с тем же storage восстанавливает токен
-			var restored = new Client(endpoint, null, storage);
+			var restored = new Client(endpoint, null, storage, verifyCert);
 			Assert.isTrue(restored.restoreAuth());
 			Assert.equals(client.authToken, restored.authToken);
 

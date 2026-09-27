@@ -19,6 +19,11 @@ import gamessa.storage.IStorage;
 	`endpoint` — базовый http(s)://host:port; WS-эндпоинт выводится из него
 	(http→ws, https→wss).
 
+	`verifyCert = false` отключает проверку серверного сертификата — для
+	dev-стендов с самоподписанным сертификатом (hl/cpp/neko; на js сертификат
+	проверяет браузер). Действует и на HTTP (дефолтный SysHttpClient), и на
+	WS-транспорты комнат; свой `IHttpClient` настраивайте самостоятельно.
+
 	Результат register/login кэшируется: `authToken` подставляется в
 	Authorization всех matchmake-вызовов и персистится через `storage`.
 */
@@ -27,6 +32,9 @@ class Client {
 	public var http(default, null):IHttpClient;
 	public var storage(get, set):IStorage;
 
+	/** Проверять серверный сертификат (TLS). См. доку класса. */
+	public var verifyCert(default, null):Bool;
+
 	/** Кэшированный bearer-токен (после register/login/restoreAuth). */
 	public var authToken(get, set):Null<String>;
 
@@ -34,20 +42,23 @@ class Client {
 
 	var _storage:Null<IStorage>;
 
-	public function new(endpoint:String, ?http:IHttpClient, ?storage:IStorage) {
+	public function new(endpoint:String, ?http:IHttpClient, ?storage:IStorage, verifyCert:Bool = true) {
 		if (StringTools.endsWith(endpoint, "/"))
 			endpoint = endpoint.substr(0, endpoint.length - 1);
 		this.endpoint = endpoint;
-		this.http = http != null ? http : defaultHttpClient();
+		this.verifyCert = verifyCert;
+		this.http = http != null ? http : defaultHttpClient(verifyCert);
 		if (storage != null)
 			this.storage = storage;
 	}
 
-	static function defaultHttpClient():IHttpClient {
+	function defaultHttpClient(verifyCert:Bool):IHttpClient {
 		#if js
 		return new gamessa.http.FetchHttpClient();
 		#elseif (hl || cpp || neko || php || python || eval || java || cs)
-		return new gamessa.http.SysHttpClient();
+		var client = new gamessa.http.SysHttpClient();
+		client.verifyCert = verifyCert;
+		return client;
 		#else
 		return null;
 		#end

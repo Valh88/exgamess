@@ -1,5 +1,6 @@
 # Сборка чат-примера (сервер: `mix phx.server` в корне репозитория;
-# эндпоинт можно передать аргументом: hl bin/example.hl http://127.0.0.1:4000)
+# эндпоинт — первым аргументом, https/wss поддерживаются:
+#   hl bin/example.hl https://127.0.0.1:4001   (self-signed стенд, см. Main.hx)
 -cp source
 -cp example
 -main example.Main

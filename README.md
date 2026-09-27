@@ -62,22 +62,22 @@ curl -s -X POST localhost:4000/api/matchmake/join_or_create/arena \
 - **Веб** — `Client` выводит `wss`/`https` из схемы эндпоинта: просто передайте
   `https://localhost:4001`. Браузер требует доверия к сертификату: один раз
   откройте `https://localhost:4001/healthz` и примите предупреждение.
-- **Нативные (HL/cpp/neko)** — проверку self-signed сертификата отключает
-  штатный выключатель std (до создания клиента; действует и на WS, и на HTTP):
+- **Нативные (HL/cpp/neko)** — в SDK есть опция `verifyCert`; `false` отключает
+  проверку самоподписанного сертификата сразу и для HTTP, и для WS-комнат:
 
   ```haxe
-  #if (hl || cpp || neko)
-  sys.ssl.Socket.DEFAULT_VERIFY_CERT = false; // только для dev-стенда!
-  #end
+  var client = new Client("https://localhost:4001", null, null, false);
   ```
 
-  Точечная альтернатива — подкласс hxWebSockets `WebSocket` с override
-  `createSocket()`, где `socket.verifyCert = false` для `wss` (см. README
-  hxWebSockets). Для прода с сертификатом из доверенного CA ничего отключать
-  не нужно; закрепить корневые CA можно через `sys.ssl.Socket.DEFAULT_CA`.
+  Точечно: `new WebSocketTransport(url, false)` и `SysHttpClient.verifyCert`.
+  Глобальная альтернатива на весь процесс (до создания клиентов):
+  `sys.ssl.Socket.DEFAULT_VERIFY_CERT = false`. Для прода с сертификатом из
+  доверенного CA ничего отключать не нужно; закрепить корневые CA можно через
+  `sys.ssl.Socket.DEFAULT_CA`.
 
-Код фреймворка и SDK менять не нужно: сервер просто предъявляет сертификат,
-клиенты проверяют его средствами платформы.
+Серверная сторона правок не требует: сервер просто предъявляет сертификат,
+клиенты проверяют его средствами платформы (или явно отключают проверку для
+самоподписанного dev-сертификата).
 
 ## Тесты
 

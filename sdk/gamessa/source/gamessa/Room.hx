@@ -120,7 +120,7 @@ class Room {
 		this.reservation = reservation;
 		this.connection = transport != null
 			? transport
-			: new WebSocketTransport(client.roomWsUrl(reservation.roomId, reservation.sessionId));
+			: new WebSocketTransport(client.roomWsUrl(reservation.roomId, reservation.sessionId), client.verifyCert);
 		attach();
 	}
 
@@ -364,7 +364,7 @@ class Room {
 	}
 
 	function openReconnectTransport(res:SeatReservation):Void {
-		connection = new WebSocketTransport(client.roomWsUrl(roomId, res.sessionId, res.reconnectionToken));
+		connection = new WebSocketTransport(client.roomWsUrl(roomId, res.sessionId, res.reconnectionToken), client.verifyCert);
 		attach();
 	}
 

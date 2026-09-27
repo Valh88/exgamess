@@ -62,6 +62,12 @@ client.register("ann", "secret123", auth -> {
 
 Ошибки — `MatchMakeError` (протокольные коды 520–526 / HTTP).
 
+TLS: конструктор — `new Client(endpoint, ?http, ?storage, verifyCert = true)`.
+Для dev-стенда с самоподписанным сертификатом передайте `verifyCert = false` —
+проверка отключается и для HTTP (дефолтный `SysHttpClient`), и для WS-комнат
+(`WebSocketTransport`); на hl/cpp/neko, js сертификат проверяет браузер.
+Эндпоинт `https://…` сам выводит `wss`/`https` во все соединения.
+
 ### `gamessa.Room`
 
 Сигналы: `onJoin`, `onMessage`, `onStateChange`, `onError`, `onDrop`,
@@ -177,8 +183,9 @@ haxe example.hxml && neko bin/example.n   # чат-пример
 пропускаются. Под node: соберите `RunIntegration` c `-js`.
 Альтернативный стенд задаётся через `GAMESSA_ENDPOINT`, например TLS-сервер:
 `GAMESSA_ENDPOINT=https://localhost:4001 haxe test_integration.hxml`
-(для self-signed на sys-таргетах раннер сам отключает проверку сертификата;
-клиенты SDK в коде — см. «TLS» в корневом README).
+(раннер сам передаёт `verifyCert = false` в `Client` — отключение проверки
+самоподписанного сертификата и на WS, и на HTTP; на js сертификат проверяет
+браузер).
 
 ## Протокол
 
