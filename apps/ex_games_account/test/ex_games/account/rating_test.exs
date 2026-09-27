@@ -39,8 +39,8 @@ defmodule ExGames.Account.RatingTest do
     # a (выше рейтингом) выигрывает у b (ниже) — прирост меньше половины K
     {:ok, %{^a => na, ^b => nb}} = Account.record_match("arena", %{a => :win, b => :loss})
 
-    assert na - rating_a in 4..15
-    assert rating_b - nb in 4..15
+    assert (na - rating_a) in 4..15
+    assert (rating_b - nb) in 4..15
   end
 
   test "draw keeps equal ratings equal" do
@@ -74,6 +74,7 @@ defmodule ExGames.Account.RatingTest do
              Account.record_match("arena", %{a => :win, 99_999_999 => :loss})
 
     assert is_integer(unknown)
+
     # победитель не получил рейтинг — транзакция откатилась
     assert :error = Account.get_rating(a, "arena")
   end

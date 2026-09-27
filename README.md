@@ -48,6 +48,37 @@ curl -s -X POST localhost:4000/api/matchmake/join_or_create/arena \
 Админ после сидов: `admin / admin123123` (переопределяется env
 `EX_GAMES_ADMIN_USERNAME/PASSWORD`), админ-API — `/api/admin/*`.
 
+### TLS (https/wss в dev)
+
+`mix phx.server` поднимает два листенера: **http://localhost:4000** и
+**https://localhost:4001** (wss). TLS включён в `config/dev.exs` на
+самоподписанном сертификате из `apps/ex_games_web/priv/cert/` (сгенерирован
+`mix phx.gen.cert`; перегенерировать — запустить команду заново в
+`apps/ex_games_web`). Используется `cipher_suite: :compatible` (TLS 1.2+1.3):
+`:strong` — это только TLS 1.3, который нативные HL-клиенты (mbedtls) не умеют.
+
+Клиенты:
+
+- **Веб** — `Client` выводит `wss`/`https` из схемы эндпоинта: просто передайте
+  `https://localhost:4001`. Браузер требует доверия к сертификату: один раз
+  откройте `https://localhost:4001/healthz` и примите предупреждение.
+- **Нативные (HL/cpp/neko)** — проверку self-signed сертификата отключает
+  штатный выключатель std (до создания клиента; действует и на WS, и на HTTP):
+
+  ```haxe
+  #if (hl || cpp || neko)
+  sys.ssl.Socket.DEFAULT_VERIFY_CERT = false; // только для dev-стенда!
+  #end
+  ```
+
+  Точечная альтернатива — подкласс hxWebSockets `WebSocket` с override
+  `createSocket()`, где `socket.verifyCert = false` для `wss` (см. README
+  hxWebSockets). Для прода с сертификатом из доверенного CA ничего отключать
+  не нужно; закрепить корневые CA можно через `sys.ssl.Socket.DEFAULT_CA`.
+
+Код фреймворка и SDK менять не нужно: сервер просто предъявляет сертификат,
+клиенты проверяют его средствами платформы.
+
 ## Тесты
 
 ```bash

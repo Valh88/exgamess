@@ -7,8 +7,8 @@ defmodule ExGames.Account.MatchResult do
   use Ecto.Schema
 
   schema "ex_games_matches" do
-    field :game, :string
-    field :results, :map
+    field(:game, :string)
+    field(:results, :map)
 
     timestamps()
   end

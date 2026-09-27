@@ -74,7 +74,10 @@ config :ex_games_web, ExGamesWebWeb.Endpoint,
 # Configure LiveView
 config :phoenix_live_view,
   # the attribute set on all root tags. Used for Phoenix.LiveView.ColocatedCSS.
-  root_tag_attribute: "phx-r"
+  root_tag_attribute: "phx-r",
+  # Windows: симлинк assets/node_modules не создаётся без прав администратора;
+  # colocated assets проект не использует — глушим warning, роняющий precommit.
+  colocated_assets: [disable_symlink_warning: true]
 
 # Configure esbuild (the version is required)
 config :esbuild,

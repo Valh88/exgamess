@@ -1082,7 +1082,7 @@ defmodule ExGames.Room.Server do
   defp push_state_snapshot(pid, state)
   defp push_state_snapshot(_pid, %__MODULE__{game_state: nil}), do: nil
 
-  defp push_state_snapshot(pid, %__MODULE__{game_state: game_state} = state) do
+  defp push_state_snapshot(pid, %__MODULE__{game_state: game_state}) do
     frame = Wire.encode(:room_state, game_state)
     push(pid, frame)
     frame

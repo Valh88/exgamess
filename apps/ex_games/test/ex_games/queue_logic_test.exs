@@ -182,7 +182,10 @@ defmodule ExGames.QueueLogicTest do
       assert %{rank: 1234} = logic_state(pid).waiting[sid]
     end
 
-    test "source :error → базовый ранг, клиентский игнорируется", %{room_id: room_id, room_pid: pid} do
+    test "source :error → базовый ранг, клиентский игнорируется", %{
+      room_id: room_id,
+      room_pid: pid
+    } do
       sid = ExGames.Id.session_id()
       :ok = Server.reserve_seat(room_id, sid, %{"user_id" => 8}, %{"rank" => 77})
       FakeTransport.attach!(room_id, sid)

@@ -8,12 +8,12 @@ defmodule ExGames.Account.Rating do
   use Ecto.Schema
 
   schema "ex_games_ratings" do
-    field :user_id, :integer
-    field :game, :string, default: "default"
-    field :rating, :integer, default: 1000
-    field :wins, :integer, default: 0
-    field :losses, :integer, default: 0
-    field :draws, :integer, default: 0
+    field(:user_id, :integer)
+    field(:game, :string, default: "default")
+    field(:rating, :integer, default: 1000)
+    field(:wins, :integer, default: 0)
+    field(:losses, :integer, default: 0)
+    field(:draws, :integer, default: 0)
 
     timestamps()
   end

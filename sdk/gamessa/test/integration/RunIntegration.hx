@@ -8,6 +8,8 @@ import utest.ui.Report;
 /**
 	Интеграционные тесты против живого сервера (PORT=4100, `mix phx.server`
 	в корне репозитория). Если сервер не поднят — тесты пропускаются.
+	Эндпоинт переопределяется переменной GAMESSA_ENDPOINT (например
+	`GAMESSA_ENDPOINT=https://localhost:4001` — самоподписанный dev-стенд).
 
 	    haxe test_integration.hxml   # interp; варианты -neko/-hl/-js в файле
 */
@@ -15,7 +17,20 @@ class RunIntegration {
 	static var failedCount:Int = 0;
 
 	static function main() {
+		#if js
 		var endpoint = "http://127.0.0.1:4100";
+		#else
+		var endpoint = Sys.getEnv("GAMESSA_ENDPOINT") != null ? Sys.getEnv("GAMESSA_ENDPOINT") : "http://127.0.0.1:4100";
+
+		// Самоподписанный dev-стенд (https/wss): отключаем проверку
+		// сертификата — это разом действует и на WS (hxWebSockets), и на
+		// HTTP (SysHttpClient), т.к. оба сидят на sys.ssl.Socket. JS проверяет
+		// сертификат средствами браузера (импортировать в доверенные).
+		#if (hl || cpp || neko)
+		if (StringTools.startsWith(endpoint, "https"))
+			sys.ssl.Socket.DEFAULT_VERIFY_CERT = false;
+		#end
+		#end
 
 		#if js
 		var client = new Client(endpoint);

@@ -65,7 +65,7 @@ defmodule ExGames.Room.StateDiff do
   # apply
   # -------------------------------------------------------------------------
 
-  defp set_at(state, [], value), do: value
+  defp set_at(_state, [], value), do: value
 
   defp set_at(state, [k | rest], value) do
     base = if is_map(state), do: state, else: %{}

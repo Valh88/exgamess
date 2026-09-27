@@ -175,6 +175,10 @@ haxe example.hxml && neko bin/example.n   # чат-пример
 Интеграционные тесты требуют запущенного сервера
 (`PORT=4100 mix phx.server` в корне) и `hl` в PATH; без сервера —
 пропускаются. Под node: соберите `RunIntegration` c `-js`.
+Альтернативный стенд задаётся через `GAMESSA_ENDPOINT`, например TLS-сервер:
+`GAMESSA_ENDPOINT=https://localhost:4001 haxe test_integration.hxml`
+(для self-signed на sys-таргетах раннер сам отключает проверку сертификата;
+клиенты SDK в коде — см. «TLS» в корневом README).
 
 ## Протокол
 
