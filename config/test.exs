@@ -27,6 +27,10 @@ config :ex_games_web, ExGamesWebWeb.Endpoint,
 # In test we don't send emails
 config :ex_games_web, ExGamesWeb.Mailer, adapter: Swoosh.Adapters.Test
 
+# В тестах drain не используется: prep_stop веб-приложения не опустошает ноду
+# (остановка приложения в тестах — не плановое выключение сервера).
+config :ex_games_web, :prep_stop_drain, false
+
 # Disable swoosh api client as it is only required for production adapters
 config :swoosh, :api_client, false
 

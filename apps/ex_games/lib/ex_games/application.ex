@@ -27,7 +27,9 @@ defmodule ExGames.Application do
       {DynamicSupervisor, name: ExGames.RoomSupervisor},
       {DynamicSupervisor, name: ExGames.LogicSupervisor},
       ExGames.Matchmaker,
-      ExGames.Presence
+      ExGames.Presence,
+      # плановое опустошение ноды (graceful shutdown): см. ExGames.Runtime.Drain
+      ExGames.Runtime.Drain
     ]
 
     Supervisor.start_link(children, strategy: :rest_for_one, name: ExGames.Supervisor)

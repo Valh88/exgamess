@@ -75,7 +75,8 @@ mix test --include native      # + тесты Port-адаптера (spawn вн�
 и коды ошибок — [PROTOCOL.md](doc/PROTOCOL.md); архитектура и supervision tree —
 [ARCHITECTURE.md](doc/ARCHITECTURE.md); поиск игры и рейтинги —
 [MATCHMAKING.md](doc/MATCHMAKING.md); дельта-синхронизация состояния —
-[DELTA_SYNC.md](doc/DELTA_SYNC.md).
+[DELTA_SYNC.md](doc/DELTA_SYNC.md); плановое выключение и пробы
+healthz/readyz — [DRAIN.md](doc/DRAIN.md).
 
 ## Как писать игру
 

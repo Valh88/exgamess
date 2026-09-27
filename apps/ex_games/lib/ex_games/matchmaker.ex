@@ -61,23 +61,31 @@ defmodule ExGames.Matchmaker do
   при поиске, но передаются в комнату).
   """
   @spec join_or_create(String.t(), term(), map()) ::
-          {:ok, reservation()} | {:error, :unknown_room_type | :auth_failed | :locked | term()}
+          {:ok, reservation()}
+          | {:error, :unknown_room_type | :auth_failed | :locked | :draining | term()}
   def join_or_create(room_name, auth_data, options \\ %{}) do
-    GenServer.call(__MODULE__, {:join_or_create, room_name, auth_data, options}, 10_000)
+    if draining?(),
+      do: {:error, :draining},
+      else: GenServer.call(__MODULE__, {:join_or_create, room_name, auth_data, options}, 10_000)
   end
 
   @doc "Создать новую комнату независимо от свободных мест."
   @spec create(String.t(), term(), map()) ::
-          {:ok, reservation()} | {:error, :unknown_room_type | :auth_failed | term()}
+          {:ok, reservation()} | {:error, :unknown_room_type | :auth_failed | :draining | term()}
   def create(room_name, auth_data, options \\ %{}) do
-    GenServer.call(__MODULE__, {:create, room_name, auth_data, options}, 10_000)
+    if draining?(),
+      do: {:error, :draining},
+      else: GenServer.call(__MODULE__, {:create, room_name, auth_data, options}, 10_000)
   end
 
   @doc "Присоединиться только к существующей комнате (без создания)."
   @spec join(String.t(), term(), map()) ::
-          {:ok, reservation()} | {:error, :unknown_room_type | :no_room | :auth_failed | term()}
+          {:ok, reservation()}
+          | {:error, :unknown_room_type | :no_room | :auth_failed | :draining | term()}
   def join(room_name, auth_data, options \\ %{}) do
-    GenServer.call(__MODULE__, {:join, room_name, auth_data, options}, 10_000)
+    if draining?(),
+      do: {:error, :draining},
+      else: GenServer.call(__MODULE__, {:join, room_name, auth_data, options}, 10_000)
   end
 
   @doc """
@@ -85,23 +93,31 @@ defmodule ExGames.Matchmaker do
   Комната может быть и не из матчмейкера (`room_name` брони будет `nil`).
   """
   @spec join_by_id(Id.id(), term(), map()) ::
-          {:ok, reservation()} | {:error, :unknown_room | :locked | :full | term()}
+          {:ok, reservation()}
+          | {:error, :unknown_room | :locked | :full | :draining | term()}
   def join_by_id(room_id, auth_data, options \\ %{}) do
-    session_id = Id.session_id()
+    if draining?() do
+      {:error, :draining}
+    else
+      session_id = Id.session_id()
 
-    case Server.reserve_seat(room_id, session_id, auth_data, options) do
-      :ok ->
-        {:ok,
-         %__MODULE__.Reservation{
-           room_name: room_name_for(room_id),
-           room_id: room_id,
-           session_id: session_id
-         }}
+      case Server.reserve_seat(room_id, session_id, auth_data, options) do
+        :ok ->
+          {:ok,
+           %__MODULE__.Reservation{
+             room_name: room_name_for(room_id),
+             room_id: room_id,
+             session_id: session_id
+           }}
 
-      {:error, _reason} = err ->
-        err
+        {:error, _reason} = err ->
+          err
+      end
     end
   end
+
+  # Нода сливает трафик (ExGames.Runtime.Drain) — новых игроков не берём.
+  defp draining?, do: ExGames.Runtime.Drain.draining?()
 
   @doc "Листинг комнат заданного типа (для лобби)."
   @spec query(String.t()) :: {:ok, [map()]} | {:error, :unknown_room_type}

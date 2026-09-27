@@ -575,6 +575,13 @@ defmodule ExGames.Room.Server do
     {:stop, :normal, state}
   end
 
+  def handle_cast(:drain_dispose, state) do
+    # плановое опустошение ноды (ExGames.Runtime.Drain): клиенты получают
+    # 4001 «server shutdown» — SDK отличает плановое закрытие от обрыва
+    close_all(state, 4001, "server shutdown")
+    {:stop, :normal, state}
+  end
+
   @impl true
   def handle_info({:DOWN, ref, :process, _pid, _exit_reason}, state) do
     case Enum.find(state.monitors, fn {_sid, r} -> r == ref end) do
