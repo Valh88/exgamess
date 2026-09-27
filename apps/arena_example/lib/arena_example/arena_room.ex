@@ -12,6 +12,9 @@ defmodule ArenaExample.ArenaRoom do
   use ExGames.Room,
     max_clients: 8,
     patch_rate: 50,
+    # дельта-синхронизация: клиент получает полный снапшот при входе,
+    # дальше — только изменения (ROOM_STATE_PATCH, opcode 15)
+    state_sync: :delta,
     logic: [ArenaExample.Rules]
 
   @impl true

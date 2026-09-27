@@ -245,8 +245,11 @@ class Room {
 				state = payload;
 				onStateChange.dispatch(payload);
 
-			case RoomStatePatch(_):
-				// дельты зарезервированы протоколом; пока игнорируем
+			case RoomStatePatch(payload):
+				// дельта: применяем операции к дереву состояния;
+				// onStateChange срабатывает на каждый патч (как в Colyseus)
+				state = StatePatch.apply(state, payload);
+				onStateChange.dispatch(state);
 
 			case RoomError(code, message):
 				onError.dispatch({code: code, message: message});

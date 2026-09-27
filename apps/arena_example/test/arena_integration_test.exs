@@ -83,7 +83,12 @@ defmodule ArenaExample.ArenaIntegrationTest do
     assert {:room_data, "player_joined", %{"session_id" => ^sid}} =
              ExGamesWeb.Test.WsClient.wait_frame(client, {:room_data, "player_joined"})
 
-    # move → moved + room_state со снапшотом
+    # первый кадр состояния — полный снапшот (delta-режим арены)
+    {:room_state, state} = ExGamesWeb.Test.WsClient.wait_frame(client, :room_state)
+    assert state["mode"] == "ranked"
+    assert state["players"][sid]
+
+    # move → moved + патч состояния (только изменённые пути)
     ExGamesWeb.Test.WsClient.send_binary(
       client,
       Wire.encode(:room_data, {"move", %{"x" => 10, "y" => -5}})
@@ -92,15 +97,9 @@ defmodule ArenaExample.ArenaIntegrationTest do
     assert {:room_data, "moved", %{"x" => 10, "y" => -5}} =
              ExGamesWeb.Test.WsClient.wait_frame(client, {:room_data, "moved"})
 
-    assert {:room_state, %{"players" => players, "mode" => "ranked"}} =
-             ExGamesWeb.Test.WsClient.wait_where(
-               client,
-               fn
-                 {:room_state, %{"players" => p}} -> p[sid]["x"] == 10
-                 _ -> false
-               end,
-               2000
-             )
+    state = wait_patch_apply(client, state)
+    assert state["players"][sid]["x"] == 10
+    assert state["players"][sid]["y"] == -5
 
     # hit по себе → счёт
     ExGamesWeb.Test.WsClient.send_binary(
@@ -108,18 +107,31 @@ defmodule ArenaExample.ArenaIntegrationTest do
       Wire.encode(:room_data, {"hit", %{"target" => sid}})
     )
 
-    assert {:room_state, %{"scores" => scores}} =
-             ExGamesWeb.Test.WsClient.wait_where(
-               client,
-               fn
-                 {:room_state, %{"scores" => s}} -> s[sid] == 1
-                 _ -> false
-               end,
-               2000
-             )
+    state = wait_patch_apply(client, state)
+    assert state["scores"][sid] == 1
 
     ExGamesWeb.Test.WsClient.stop(client)
   end
+
+  # ждёт кадр ROOM_STATE_PATCH и применяет операции к накопленному состоянию
+  defp wait_patch_apply(client, state, timeout \\ 2000) do
+    {:room_state_patch, %{"ops" => ops}} =
+      ExGamesWeb.Test.WsClient.wait_frame(client, :room_state_patch, timeout)
+
+    Enum.reduce(ops, state, fn op, acc ->
+      if op["d"] == true do
+        delete_in(acc, op["p"])
+      else
+        put_path(acc, op["p"], op["v"])
+      end
+    end)
+  end
+
+  defp put_path(map, [k], v) when is_map(map), do: Map.put(map, k, v)
+  defp put_path(map, [k | rest], v), do: Map.put(map, k, put_path(Map.fetch!(map, k), rest, v))
+
+  defp delete_in(map, [k]) when is_map(map), do: Map.delete(map, k)
+  defp delete_in(map, [k | rest]), do: Map.put(map, k, delete_in(Map.fetch!(map, k), rest))
 
   test "chat room works end to end" do
     token = register!("chatter_#{System.unique_integer([:positive])}")

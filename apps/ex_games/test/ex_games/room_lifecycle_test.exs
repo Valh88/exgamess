@@ -164,6 +164,53 @@ defmodule ExGames.RoomLifecycleTest do
            end)
   end
 
+  test "delta mode: snapshot first, then patches, no empty frames", %{room_id: _room_id} do
+    {:ok, room_id} = Rooms.start(ExGames.Test.Room, state_sync: :delta)
+    {:ok, pid} = Rooms.lookup(room_id)
+
+    sid = ExGames.Id.session_id()
+    Server.reserve_seat(room_id, sid, %{}, %{})
+    {transport, _join, _state} = FakeTransport.attach!(room_id, sid)
+
+    # 1) первая доставка состояния — полный кадр
+    GenServer.cast(pid, {:set_state, %{"a" => 1, "nested" => %{"x" => 0}}})
+
+    assert eventually(fn ->
+             FakeTransport.frames(transport, 100)
+             |> Enum.any?(fn f ->
+               match?({:ok, {:room_state, %{"a" => 1}}}, Wire.decode(f))
+             end)
+           end)
+
+    # 2) изменение вложенного ключа → патч только по нему
+    GenServer.cast(pid, {:set_state, %{"a" => 1, "nested" => %{"x" => 5}}})
+
+    assert eventually(fn ->
+             FakeTransport.frames(transport, 100)
+             |> Enum.any?(fn f ->
+               match?(
+                 {:ok,
+                  {:room_state_patch, %{"ops" => [%{"p" => ["nested", "x"], "v" => 5}]}}},
+                 Wire.decode(f)
+               )
+             end)
+           end)
+
+    # 3) повторная установка того же состояния → новых кадров нет
+    before = length(FakeTransport.frames(transport, 100))
+    GenServer.cast(pid, {:set_state, %{"a" => 1, "nested" => %{"x" => 5}}})
+    Process.sleep(60)
+    assert length(FakeTransport.frames(transport, 100)) == before
+
+    # 4) новый клиент получает полный снапшот (не патч)
+    sid2 = ExGames.Id.session_id()
+    Server.reserve_seat(room_id, sid2, %{}, %{})
+    {_t2, _join, snapshot} = FakeTransport.attach!(room_id, sid2)
+    assert {:ok, {:room_state, %{"a" => 1, "nested" => %{"x" => 5}}}} = Wire.decode(snapshot)
+
+    GenServer.stop(pid, :normal)
+  end
+
   test "dispose closes clients with 4000", %{room_id: room_id} do
     sid = ExGames.Id.session_id()
     Server.reserve_seat(room_id, sid, %{}, %{})

@@ -42,6 +42,9 @@ defmodule ExGames.Room do
     * `:reconnect_ttl` — окно переподключения после не-согласованного обрыва
       транспорта, мс (по умолчанию `30_000`; `false`/`0` — отключить: обрыв
       сразу вызывает `handle_leave`).
+    * `:state_sync` — `:snapshot` (полный `ROOM_STATE` на изменённом тике,
+      по умолчанию) или `:delta` — патчи `ROOM_STATE_PATCH` после первого
+      полного кадра (см. `ExGames.Room.StateDiff`).
     * `:logic` — список модулей `ExGames.Room.Logic`, встраиваемых в комнату
       (логика игры отдельно от оболочки; см. `ExGames.Room.Logic`).
 
@@ -136,7 +139,10 @@ defmodule ExGames.Room do
     patch_rate: 50,
     auto_dispose: true,
     rate_limit: 120,
-    reconnect_ttl: 30_000
+    reconnect_ttl: 30_000,
+    # :snapshot — полные ROOM_STATE на тике; :delta — патчи (opcode 15)
+    # после первого полного кадра (см. ExGames.Room.StateDiff)
+    state_sync: :snapshot
   ]
 
   @doc false

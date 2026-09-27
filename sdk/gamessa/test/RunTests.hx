@@ -10,6 +10,7 @@ class RunTests {
 		var runner = new Runner();
 		runner.addCase(new gamessa.tests.MsgPackTest());
 		runner.addCase(new gamessa.tests.WireTest());
+		runner.addCase(new gamessa.tests.StatePatchTest());
 
 		runner.onProgress.add(p -> {
 			for (a in p.result.assertations) {

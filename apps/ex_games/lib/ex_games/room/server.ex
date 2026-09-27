@@ -26,6 +26,7 @@ defmodule ExGames.Room.Server do
   alias ExGames.Id
   alias ExGames.Room
   alias ExGames.Room.Client
+  alias ExGames.Room.StateDiff
   alias ExGames.Wire
 
   require Logger
@@ -48,6 +49,7 @@ defmodule ExGames.Room.Server do
           rate: %{Id.id() => {non_neg_integer(), integer()}},
           game_state: term() | nil,
           state_dirty: boolean(),
+          last_sent_state: term() | nil,
           user_state: term(),
           logics: [{module(), term()}],
           tick_timer: reference() | nil,
@@ -69,6 +71,7 @@ defmodule ExGames.Room.Server do
             rate: %{},
             game_state: nil,
             state_dirty: false,
+            last_sent_state: nil,
             user_state: nil,
             logics: [],
             tick_timer: nil,
@@ -282,6 +285,10 @@ defmodule ExGames.Room.Server do
             {:ok, %__MODULE__{} = state} ->
               case run_logic_join(state, client, seat.auth) do
                 {:ok, %__MODULE__{} = state} ->
+                  # неотправленный дифф уходит текущим клиентам ДО присоединения
+                  # новичка (тот получит полный снапшот актуального состояния)
+                  state = flush_state_delta(state)
+
                   ref = Process.monitor(pid)
 
                   state = %__MODULE__{
@@ -299,6 +306,7 @@ defmodule ExGames.Room.Server do
 
                   push(pid, join_frame)
                   state_frame = push_state_snapshot(pid, state)
+                  state = %__MODULE__{state | last_sent_state: state.game_state}
 
                   publish_listing(state)
 
@@ -348,6 +356,7 @@ defmodule ExGames.Room.Server do
           {:ok, %Client{} = client} ->
             # подмена транспорта: старый монитор демонтируем, логики не трогаем
             state = drop_monitor(state, session_id)
+            state = flush_state_delta(state)
             ref = Process.monitor(pid)
 
             # ротация токена (как в Colyseus): каждое переподключение получает новый
@@ -369,6 +378,7 @@ defmodule ExGames.Room.Server do
 
             push(pid, join_frame)
             state_frame = push_state_snapshot(pid, state)
+            state = %__MODULE__{state | last_sent_state: state.game_state}
 
             :telemetry.execute([:ex_games, :room, :rejoin], %{count: map_size(state.clients)}, %{
               room_id: state.room_id,
@@ -967,24 +977,70 @@ defmodule ExGames.Room.Server do
   defp push_state_snapshot(pid, state)
   defp push_state_snapshot(_pid, %__MODULE__{game_state: nil}), do: nil
 
-  defp push_state_snapshot(pid, %__MODULE__{game_state: game_state}) do
+  defp push_state_snapshot(pid, %__MODULE__{game_state: game_state} = state) do
     frame = Wire.encode(:room_state, game_state)
     push(pid, frame)
     frame
   end
 
+  # Дельта-режим (:state_sync == :delta): неотправленный дифф уходит текущим
+  # клиентам до подключения новичка — новичку затем уходит полный снапшот
+  # того же состояния (все клиенты сходятся к одному base).
+  defp flush_state_delta(%__MODULE__{} = state) do
+    cond do
+      state_sync(state) != :delta or is_nil(state.game_state) or is_nil(state.last_sent_state) ->
+        state
+
+      true ->
+        ops = StateDiff.diff(state.last_sent_state, state.game_state)
+
+        case ops do
+          [] ->
+            %{state | last_sent_state: state.game_state}
+
+          _ ->
+            push_all(state, Wire.encode(:room_state_patch, %{"ops" => ops}))
+            %{state | last_sent_state: state.game_state}
+        end
+    end
+  end
+
   defp broadcast_state_if_dirty(%__MODULE__{state_dirty: true, game_state: game_state} = state)
        when not is_nil(game_state) do
-    frame = Wire.encode(:room_state, game_state)
+    case push_state_update(state) do
+      :skipped -> :noop
+      frame -> push_all(state, frame)
+    end
 
+    %__MODULE__{state | state_dirty: false, last_sent_state: game_state}
+  end
+
+  defp broadcast_state_if_dirty(state), do: state
+
+  # Возвращает кадр для отправки или :skipped (дельта без изменений).
+  defp push_state_update(%__MODULE__{game_state: game_state} = state) do
+    cond do
+      state_sync(state) == :delta and state.last_sent_state != nil and is_map(game_state) ->
+        case StateDiff.diff(state.last_sent_state, game_state) do
+          [] -> :skipped
+          ops -> Wire.encode(:room_state_patch, %{"ops" => ops})
+        end
+
+      true ->
+        # snapshot-режим либо первая доставка состояния
+        Wire.encode(:room_state, game_state)
+    end
+  end
+
+  defp push_all(%__MODULE__{} = state, frame) do
     state.clients
     |> Map.values()
     |> Enum.each(&push(&1.pid, frame))
 
-    %__MODULE__{state | state_dirty: false}
+    :ok
   end
 
-  defp broadcast_state_if_dirty(state), do: state
+  defp state_sync(state), do: Keyword.get(state.options, :state_sync, :snapshot)
 
   defp push(pid, frame) when is_pid(pid), do: send(pid, {:ex_games_push, frame})
   defp push(_pid, _frame), do: :ok
