@@ -47,6 +47,19 @@ defmodule ExGames.WireTest do
       assert {:ok, {:room_state, ^state}} = Wire.decode(frame)
     end
 
+    test "кириллица/юникод в payload ходит байт-в-байт" do
+      # прикладной кейс: ник и текст сообщения на кириллице
+      frame =
+        Wire.encode(:room_data, {"say", %{"text" => "привет мир", "from" => "Николай"}})
+
+      assert {:ok, {:room_data, "say", %{"text" => "привет мир", "from" => "Николай"}}} =
+               Wire.decode(frame)
+
+      # и в состоянии комнаты (дельта-синхронизация)
+      state = %{"ник" => "Влад", "чат" => ["фыв", "Привет!"]}
+      assert {:ok, {:room_state, ^state}} = Wire.decode(Wire.encode(:room_state, state))
+    end
+
     test "room_request / room_response correlation" do
       request = Wire.encode(:room_request, {42, "whoami", %{"x" => 1}})
       assert {:ok, {:room_request, 42, "whoami", %{"x" => 1}}} = Wire.decode(request)

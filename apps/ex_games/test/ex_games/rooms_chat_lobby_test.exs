@@ -75,6 +75,42 @@ defmodule ExGames.RoomsChatLobbyTest do
 
       assert msg["text"] == "first"
     end
+
+    test "history keeps only last @history_size messages (queue не портится после 50)", %{
+      name: name
+    } do
+      {:ok, res} =
+        Matchmaker.join_or_create(name, %{"username" => "ann"}, %{
+          "options" => %{"channel" => "global"}
+        })
+
+      {t1, _join, _st} = FakeTransport.attach!(res.room_id, res.session_id)
+
+      # больше @history_size (50): раньше после 50-го сообщения push_history
+      # возвращал достанный элемент вместо очереди — все последующие say падали
+      Enum.each(1..55, fn i ->
+        FakeTransport.send_frame(
+          res.room_id,
+          res.session_id,
+          Wire.encode(:room_data, {"say", %{"text" => "msg#{i}"}})
+        )
+
+        _ = ExGames.RoomLifecycleTestHelpers.wait(t1, "say")
+      end)
+
+      FakeTransport.send_frame(
+        res.room_id,
+        res.session_id,
+        Wire.encode(:room_request, {9, "history", %{}})
+      )
+
+      assert {:ok, {:room_response, 9, %{"messages" => messages}}} =
+               Wire.decode(ExGames.RoomLifecycleTestHelpers.wait_response(t1, 9))
+
+      assert length(messages) == 50
+      assert hd(messages)["text"] == "msg6"
+      assert List.last(messages)["text"] == "msg55"
+    end
   end
 
   # -------------------------------------------------------------------------

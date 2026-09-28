@@ -101,6 +101,42 @@ class RoomTest extends utest.Test {
 		Assert.equals(5, changes[1].score);
 	}
 
+	/** Кириллица в прикладных данных: снапшот → типизированный доступ → отправка. */
+	function testCyrillicPayloads() {
+		var t = makeJoinedRoom();
+		var room = t.room;
+		var got:Array<{type:Dynamic, message:Dynamic}> = [];
+		room.onMessage.add(e -> got.push(e));
+
+		// сервер прислал снапшот и сообщение с кириллицей
+		var players = stringMap(["Николай", stringMap(["hp", 7])]);
+		t.transport.feed(RoomState(stringMap(["score", 1, "players", players])));
+		t.transport.feed(RoomData("say", stringMap(["text", "привет", "from", "Влад"])));
+
+		// типизированный доступ к снапшоту; кириллический ключ — через Reflect
+		// (не-ASCII идентификаторы в Haxe не являются идентификаторами)
+		var nik:Dynamic = Reflect.field(room.state.players, "Николай");
+		Assert.equals(7, nik.hp);
+		Assert.equals(1, room.state.score);
+
+		// сообщение дошло с байт-точным текстом
+		Assert.equals(1, got.length);
+		var m:StringMap<Dynamic> = got[0].message;
+		Assert.equals("привет", m.get("text"));
+		Assert.equals("Влад", m.get("from"));
+
+		// и отправка кириллицы кодируется корректно (roundtrip через Wire)
+		room.send("say", {text: "фыв"});
+		switch (Wire.decode(t.transport.sent[t.transport.sent.length - 1])) {
+			case RoomData(type, payload):
+				var sent:StringMap<Dynamic> = payload;
+				Assert.equals("say", type);
+				Assert.equals("фыв", sent.get("text"));
+			case _:
+				Assert.fail("expected RoomData");
+		}
+	}
+
 	function testErrorFrameWithRequestIdRejectsPendingImmediately() {
 		var t = makeJoinedRoom();
 		var rejected:Null<MatchMakeError> = null;

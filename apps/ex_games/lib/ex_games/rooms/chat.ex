@@ -72,7 +72,8 @@ defmodule ExGames.Rooms.Chat do
     queue = :queue.in(entry, history)
 
     if :queue.len(queue) > @history_size do
-      {{_, rest}, _} = :queue.out(queue)
+      # :queue.out возвращает {{:value, item}, rest} — rest и есть новая очередь
+      {_, rest} = :queue.out(queue)
       rest
     else
       queue

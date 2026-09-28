@@ -153,6 +153,7 @@ class Main {
 
 	#if !js
 	static function interactiveLoop(room:Room<Dynamic>):Void {
+		setupConsoleInput();
 		var stdin = Sys.stdin();
 		Sys.println('type a message and press Enter ("/quit" to leave):');
 
@@ -167,6 +168,18 @@ class Main {
 			if (text != "")
 				Dispatcher.post(() -> room.send("say", {text: text}));
 		}
+	}
+
+	/**
+		Windows-консоли по умолчанию стоят в cp866/cp1251, а `Sys.stdin().readLine()`
+		декодирует ввод как UTF-8: кириллица превращается в пустую строку и
+		сообщение молча не отправляется (латиница не страдает — она однобайтовая
+		и в любой странице). Переключаем кодовую страницу консоли на UTF-8.
+	*/
+	static function setupConsoleInput():Void {
+		#if ((hl || cpp || neko) && windows)
+		Sys.command("chcp", ["65001"]);
+		#end
 	}
 	#end
 
