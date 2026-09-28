@@ -216,4 +216,29 @@ class RoomTest extends utest.Test {
 
 		Assert.isTrue(Math.abs(t.room.serverNow() - 1700000000000.0) < 50);
 	}
+
+	/** После первого PONG последующие ping-кадры несут клиент-отчётный RTT. */
+	function testPingPayloadCarriesLastRtt() {
+		var t = makeJoinedRoom();
+
+		// первый ping (sync после join) — замеров ещё не было, rtt нет
+		function lastPingPayload():Dynamic {
+			return switch (Wire.decode(t.transport.sent[t.transport.sent.length - 1])) {
+				case Ping(p): p;
+				case _:
+					Assert.fail("expected Ping");
+					null;
+			}
+		}
+		Assert.isNull(lastPingPayload().get("rtt"));
+
+		var t0:Null<Float> = lastPingPayload().get("t");
+		t.transport.feed(Ping(stringMap(["t", t0, "ts", 1700000000000.0])));
+
+		// следующий ping уже знает RTT (loopback ~0, но не null)
+		t.room.ping(_ -> {}, _ -> Assert.fail("ping timed out"));
+		var rtt:Null<Int> = lastPingPayload().get("rtt");
+		Assert.notNull(rtt);
+		Assert.isTrue(rtt >= 0 && rtt < 5000);
+	}
 }

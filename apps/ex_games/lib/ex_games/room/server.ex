@@ -427,6 +427,13 @@ defmodule ExGames.Room.Server do
   def handle_call(:client_count, _from, %__MODULE__{} = state),
     do: {:reply, map_size(state.clients), state}
 
+  def handle_call({:client_rtt, session_id}, _from, %__MODULE__{} = state) do
+    case Map.fetch(state.clients, session_id) do
+      {:ok, %Client{rtt: rtt}} -> {:reply, {:ok, rtt}, state}
+      :error -> {:reply, {:error, :not_found}, state}
+    end
+  end
+
   @impl true
   def handle_call(
         {:reserve_seat, session_id, auth_data, options, ttl},
@@ -711,6 +718,17 @@ defmodule ExGames.Room.Server do
   defp full?(state),
     do: map_size(state.clients) + map_size(state.reserved) >= state.max_clients
 
+  # Клиент-отчётный RTT: первый замер принимаем как есть, последующие
+  # сглаживаем EMA α=0.25 (та же константа, что у client-side offset).
+  defp store_rtt(%Client{rtt: nil} = client, rtt) when is_integer(rtt) and rtt >= 0,
+    do: %Client{client | rtt: rtt}
+
+  defp store_rtt(%Client{rtt: prev} = client, rtt)
+       when is_integer(rtt) and rtt >= 0 and is_integer(prev),
+       do: %Client{client | rtt: div(prev * 3 + rtt, 4)}
+
+  defp store_rtt(client, _rtt), do: client
+
   defp invoke_join(%__MODULE__{} = state, client, auth) do
     case safe_apply(state.module, :handle_join, [state.handle, client, auth, state.user_state]) do
       {:ok, {:ok, user_state}} ->
@@ -752,10 +770,20 @@ defmodule ExGames.Room.Server do
         {:noreply, state}
 
       {:ok, {:ping, payload}} when is_map(payload) ->
-        # эхо метки клиента + серверный штамп времени (unix-ms):
-        # клиент оценивает смещение часов для Room.serverNow()
-        now_ms = System.system_time(:millisecond)
-        push(client.pid, Wire.encode(:ping, Map.put(payload, "ts", now_ms)))
+        # эхо метки клиента + серверный штамп времени (unix-ms): клиент
+        # оценивает смещение часов для Room.serverNow(). Клиент-отчётный
+        # RTT (ms) складываем в структуру клиента — для мониторинга и
+        # лаг-осознанной логики; сервер цифре доверяет (античита нет).
+        client = store_rtt(client, payload["rtt"])
+        state = %{state | clients: Map.put(state.clients, client.session_id, client)}
+
+        if is_integer(client.rtt) do
+          :telemetry.execute([:ex_games, :room, :ping], %{rtt: client.rtt}, %{
+            room_id: state.room_id
+          })
+        end
+
+        push(client.pid, Wire.encode(:ping, Map.put(payload, "ts", System.system_time(:millisecond))))
         {:noreply, state}
 
       {:ok, {:ping, payload}} ->

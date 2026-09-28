@@ -115,6 +115,9 @@ class Room<S> {
 	/** Смещение часов (unix-ms): серверное минус локальное, EMA по PONG-замерам. */
 	var serverOffset:Null<Float> = null;
 
+	/** Последний измеренный RTT (ms) — уходит серверу с ping-payload. */
+	var lastRtt:Null<Int> = null;
+
 	/** Последний снапшот состояния (после onStateChange). Анонимное дерево,
 		типизированное параметром `S` (typedef от wire-структуры комнаты);
 		динамические ключи (sid → значение) — `Dynamic`. */
@@ -315,6 +318,7 @@ class Room<S> {
 				}
 
 				var rtt = t1 - t0;
+				lastRtt = rtt < 0 ? 0 : Std.int(rtt);
 				var handlers = pingHandlers;
 				pingHandlers = [];
 				for (handler in handlers)
@@ -472,9 +476,13 @@ class Room<S> {
 			queueOrSend(Wire.encode(Ping(timePayload(now()))));
 	}
 
-	static function timePayload(t0:Float):StringMap<Dynamic> {
+	function timePayload(t0:Float):StringMap<Dynamic> {
 		var m = new StringMap<Dynamic>();
 		m.set("t", t0);
+		// клиент-отчётный RTT: сервер хранит для мониторинга/лаг-логики
+		// (целое: сервер валидирует is_integer)
+		if (lastRtt != null)
+			m.set("rtt", lastRtt);
 		return m;
 	}
 

@@ -52,10 +52,37 @@ defmodule ExGames.RoomLogicTest do
     sid = join!(room_id, %{})
     [t] = transports(room_id, [sid])
 
-    FakeTransport.send_frame(room_id, sid, Wire.encode(:ping, %{"t" => 42.0}))
+    FakeTransport.send_frame(room_id, sid, Wire.encode(:ping, %{"t" => 42.0, "rtt" => 120}))
 
     assert {:ok, {:ping, %{"t" => 42.0, "ts" => ts}}} = Wire.decode(wait_ping(t))
     assert abs(ts - System.system_time(:millisecond)) < 5_000
+
+    # клиент-отчётный RTT сохранился; повторные замеры сглаживаются EMA α=0.25
+    {:ok, pid} = Rooms.lookup(room_id)
+
+    assert eventually(fn ->
+             %{clients: clients} = :sys.get_state(pid)
+             clients[sid].rtt == 120
+           end)
+
+    FakeTransport.send_frame(room_id, sid, Wire.encode(:ping, %{"t" => 43.0, "rtt" => 200}))
+
+    assert eventually(fn ->
+             %{clients: clients} = :sys.get_state(pid)
+             clients[sid].rtt == div(120 * 3 + 200, 4)
+           end)
+  end
+
+  test "Handle.client_rtt reads stored rtt", %{room_id: room_id} do
+    sid = join!(room_id, %{})
+    handle = %ExGames.Room.Handle{room_id: room_id}
+
+    assert {:ok, nil} = ExGames.Room.client_rtt(handle, sid)
+    assert {:error, :not_found} = ExGames.Room.client_rtt(handle, "unknown-sid")
+
+    FakeTransport.send_frame(room_id, sid, Wire.encode(:ping, %{"t" => 42.0, "rtt" => 77}))
+
+    assert eventually(fn -> {:ok, 77} == ExGames.Room.client_rtt(handle, sid) end)
   end
 
   test "ping without payload echoed as single byte", %{room_id: room_id} do

@@ -19,10 +19,11 @@ defmodule ExGames.Room.Client do
           pid: pid(),
           auth: auth(),
           reconnection_token: ExGames.Id.id(),
-          joined_at: DateTime.t()
+          joined_at: DateTime.t(),
+          rtt: non_neg_integer() | nil
         }
 
-  defstruct [:session_id, :pid, :auth, :reconnection_token, joined_at: nil]
+  defstruct [:session_id, :pid, :auth, :reconnection_token, joined_at: nil, rtt: nil]
 
   @doc "Формат клиента для wire (в списках игроков и т.п.)."
   @spec to_wire(t()) :: map()

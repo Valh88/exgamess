@@ -349,6 +349,17 @@ defmodule ExGames.Room do
     GenServer.call(via(room.room_id), :list_clients)
   end
 
+  @doc """
+  RTT клиента в миллисекундах (клиент-отчётный: измеряет SDK в `Room.ping`
+  и keepalive, сервер хранит со сглаживанием EMA). `{:ok, nil}` — клиент в
+  комнате, но замер ещё не приходил; `{:error, :not_found}` — клиента нет.
+  """
+  @spec client_rtt(handle(), ExGames.Id.id()) ::
+          {:ok, non_neg_integer() | nil} | {:error, :not_found}
+  def client_rtt(%__MODULE__.Handle{} = room, session_id) do
+    GenServer.call(via(room.room_id), {:client_rtt, session_id})
+  end
+
   @doc "Число подключённых клиентов."
   @spec count(handle()) :: non_neg_integer()
   def count(%__MODULE__.Handle{} = room) do
