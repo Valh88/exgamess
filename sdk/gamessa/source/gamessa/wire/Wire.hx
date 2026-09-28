@@ -42,8 +42,12 @@ class Wire {
 		out.addByte(opcodeOf(frame));
 
 		switch (frame) {
-			case Ping | LeaveRoom:
-				// однобайтовые кадры
+			case LeaveRoom:
+				// однобайтовый кадр
+			case Ping(payload):
+				// без payload — однобайтовый; с payload — метка синхронизации времени
+				if (payload != null)
+					out.add(MsgPack.encode(payload));
 			case JoinRoom(data):
 				out.add(MsgPack.encode(data));
 			case RoomError(code, message, requestId):
@@ -79,7 +83,14 @@ class Wire {
 
 		switch (op) {
 			case OP_PING:
-				return Ping;
+				if (bytes.length > 1) {
+					try {
+						payload = MsgPack.decode(bytes.sub(1, bytes.length - 1));
+					} catch (e: Dynamic) {
+						throw new WireError('invalid ping payload (op $op): $e');
+					}
+				}
+				return Ping(payload);
 			case OP_LEAVE_ROOM:
 				return LeaveRoom;
 			case _:
@@ -122,7 +133,7 @@ class Wire {
 			case RoomData(_, _): OP_ROOM_DATA;
 			case RoomState(_): OP_ROOM_STATE;
 			case RoomStatePatch(_): OP_ROOM_STATE_PATCH;
-			case Ping: OP_PING;
+			case Ping(_): OP_PING;
 			case RoomRequest(_, _, _): OP_ROOM_REQUEST;
 			case RoomResponse(_, _): OP_ROOM_RESPONSE;
 		};

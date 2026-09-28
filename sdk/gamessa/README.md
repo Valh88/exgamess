@@ -91,7 +91,9 @@ compile-time, сервер структуру не валидирует.
 |---|---|
 | `send(type, payload)` | сообщение (до JOIN буферизуется, cap `bufferLimit`) |
 | `request(type, payload, ?timeout)` | запрос-ответ по `request_id` (таймаут по умолчанию 10с) |
-| `ping(cb, err)` | RTT-замер |
+| `ping(cb, err)` | RTT-замер (попутно синхронизирует время) |
+| `serverNow()` | оценка серверного времени, unix-ms (см. ниже) |
+| `timeSynced()` | true, когда offset подтверждён серверным PONG'ом |
 | `leave(?consented)` | покинуть комнату (кадр `LEAVE_ROOM`) |
 
 Свойства reconnect: `reconnectDelayMs` (100), `reconnectMaxDelayMs` (5000),
@@ -104,6 +106,18 @@ Keepalive: `keepAliveMs` (25с, 0 — выключить). Сервер закр
 клиента нет данных 60с (`timeout` в `WsController`), поэтому SDK сама шлёт
 PING — соединение не рвётся во время простоя. Держите интервал меньше
 серверного таймаута и таймаутов NAT/прокси.
+
+Серверное время: PING несёт метку `{t}`, сервер эхирует её со своим штампом
+`{t, ts: unix-ms}`; из замеров EMA-оценка смещения часов:
+
+```haxe
+room.serverNow()   // ≈ unix-ms сервера, точность порядка RTT/2
+```
+
+Синхронизация уходит сразу после join и обновляется на каждом
+keepalive-PING; до первого PONG `serverNow()` возвращает локальные часы
+(проверяйте `timeSynced()`). Годится для серверных дедлайнов, передаваемых
+как unix-ms.
 
 ### Reconnect-флоу
 
@@ -185,7 +199,7 @@ gamessa.util.Dispatcher.post = f -> mainThreadQueue.push(f);
 ## Разработка
 
 ```bash
-haxe test.hxml               # юнит-тесты кодека/кадров (108 проверок, interp)
+haxe test.hxml               # юнит-тесты кодека/кадров/времени/лага (190 проверок, interp)
 haxe test_integration.hxml   # против живого сервера PORT=4100 (graceful-skip)
 haxe build.hxml -js bin/gamessa.js        # проверка компиляции JS
 haxe build.hxml -hl bin/gamessa.hl        # проверка компиляции HL
@@ -200,6 +214,23 @@ haxe example.hxml && neko bin/example.n   # чат-пример
 (раннер сам передаёт `verifyCert = false` в `Client` — отключение проверки
 самоподписанного сертификата и на WS, и на HTTP; на js сертификат проверяет
 браузер).
+
+### Имитация лагов (dev)
+
+`gamessa.debug.LatencyTransport` — обёртка над транспортом с задержкой,
+джиттером и потерей кадров (аналог `latencySimulation` в Colyseus).
+Подставляется точкой `connectRoom`, так что лаги действуют с первого кадра:
+
+```haxe
+import gamessa.debug.LatencyTransport;
+
+var room = client.connectRoom(res,
+    LatencyTransport.wrapWebSocket(client, res, {delay: 150, jitter: 40}));
+// вариант: {delay: 100, dropRate: 0.05} — потери исходящих кадров
+```
+
+Только для разработки/тестов; при auto-reconnect Room создаёт транспорт сам,
+без обёртки.
 
 ## Протокол
 

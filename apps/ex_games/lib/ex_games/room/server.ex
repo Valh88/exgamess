@@ -751,6 +751,17 @@ defmodule ExGames.Room.Server do
         push(client.pid, Wire.encode(:ping))
         {:noreply, state}
 
+      {:ok, {:ping, payload}} when is_map(payload) ->
+        # эхо метки клиента + серверный штамп времени (unix-ms):
+        # клиент оценивает смещение часов для Room.serverNow()
+        now_ms = System.system_time(:millisecond)
+        push(client.pid, Wire.encode(:ping, Map.put(payload, "ts", now_ms)))
+        {:noreply, state}
+
+      {:ok, {:ping, payload}} ->
+        push(client.pid, Wire.encode(:ping, payload))
+        {:noreply, state}
+
       {:ok, {:room_data, type, payload}} ->
         dispatch_message(state, client, type, payload)
 

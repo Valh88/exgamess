@@ -48,6 +48,25 @@ defmodule ExGames.RoomLogicTest do
     assert {:ok, {:room_data, "pong", %{}}} = Wire.decode(frame)
   end
 
+  test "ping with payload echoed with server timestamp", %{room_id: room_id} do
+    sid = join!(room_id, %{})
+    [t] = transports(room_id, [sid])
+
+    FakeTransport.send_frame(room_id, sid, Wire.encode(:ping, %{"t" => 42.0}))
+
+    assert {:ok, {:ping, %{"t" => 42.0, "ts" => ts}}} = Wire.decode(wait_ping(t))
+    assert abs(ts - System.system_time(:millisecond)) < 5_000
+  end
+
+  test "ping without payload echoed as single byte", %{room_id: room_id} do
+    sid = join!(room_id, %{})
+    [t] = transports(room_id, [sid])
+
+    FakeTransport.send_frame(room_id, sid, Wire.encode(:ping))
+
+    assert {:ok, {:ping}} = Wire.decode(wait_ping(t))
+  end
+
   test "request routed to logic, reply correlated", %{room_id: room_id} do
     sid = join!(room_id, %{"start" => 42})
     [t] = transports(room_id, [sid])
@@ -149,6 +168,30 @@ defmodule ExGames.RoomLogicTest do
   end
 
   defp logic_state(logics, mod), do: elem(Enum.find(logics, fn {m, _} -> m == mod end), 1)
+
+  defp wait_ping(transport, tries \\ 50)
+
+  defp wait_ping(_transport, 0), do: raise("ping frame did not arrive")
+
+  defp wait_ping(transport, tries) do
+    frames = FakeTransport.frames(transport, 100)
+
+    found =
+      Enum.find(frames, fn frame ->
+        case Wire.decode(frame) do
+          {:ok, {:ping, _}} -> true
+          {:ok, {:ping}} -> true
+          _ -> false
+        end
+      end)
+
+    if found do
+      found
+    else
+      Process.sleep(20)
+      wait_ping(transport, tries - 1)
+    end
+  end
 
   defp eventually(fun, tries \\ 50)
 

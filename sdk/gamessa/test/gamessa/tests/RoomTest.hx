@@ -157,4 +157,63 @@ class RoomTest extends utest.Test {
 
 
 	}
+
+	/** После join клиент сразу шлёт sync-PING с меткой {t}; эхо с ts синхронизирует serverNow. */
+	function testServerNowSyncsFromPong() {
+		var t = makeJoinedRoom();
+
+		// sync-PING ушел транспортом сразу после join
+		Assert.equals(1, t.transport.sent.length);
+		var t0:Float = switch (Wire.decode(t.transport.sent[0])) {
+			case Ping(p):
+				var v:Null<Float> = p.get("t");
+				v;
+			case _:
+				Assert.fail("expected Ping after join");
+				0;
+		};
+		Assert.isTrue(t0 > 0);
+		Assert.isFalse(t.room.timeSynced());
+
+		// «серверные часы»: локальные + известное смещение (unix-ms)
+		var fakeServerTime:Float = 1700000000000.0;
+		t.transport.feed(Ping(stringMap(["t", t0, "ts", fakeServerTime])));
+
+		Assert.isTrue(t.room.timeSynced());
+		// loopback: RTT ~0, serverNow почти совпадает с серверным штампом
+		Assert.isTrue(Math.abs(t.room.serverNow() - fakeServerTime) < 50);
+	}
+
+	/** Голый pong (сервер без поддержки payload) резолвит RTT, offset не трогает. */
+	function testBarePongStillResolvesRtt() {
+		var t = makeJoinedRoom();
+		var rtt:Float = -1;
+
+		// ручной ping поверх sync-ping'а после join
+		t.room.ping(v -> rtt = v, _ -> Assert.fail("ping timed out"));
+		Assert.equals(2, t.transport.sent.length);
+
+		t.transport.feed(Ping(null));
+
+		Assert.isTrue(rtt >= 0);
+		Assert.isFalse(t.room.timeSynced());
+	}
+
+	/** EMA: несколько замеров с разными «часами сервера» — offset сходится к последнему. */
+	function testServerNowEmaConverges() {
+		var t = makeJoinedRoom();
+		var t0:Float = switch (Wire.decode(t.transport.sent[0])) {
+			case Ping(p):
+				var v:Null<Float> = p.get("t");
+				v;
+			case _:
+				Assert.fail("expected Ping after join");
+				0;
+		};
+
+		t.transport.feed(Ping(stringMap(["t", t0, "ts", 1700000000000.0])));
+		t.transport.feed(Ping(stringMap(["t", t0, "ts", 1700000000000.0])));
+
+		Assert.isTrue(Math.abs(t.room.serverNow() - 1700000000000.0) < 50);
+	}
 }

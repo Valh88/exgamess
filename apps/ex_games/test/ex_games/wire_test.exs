@@ -10,6 +10,12 @@ defmodule ExGames.WireTest do
       assert {:ok, {:ping}} == Wire.decode(frame)
     end
 
+    test "ping carries optional payload (синхронизация времени)" do
+      frame = Wire.encode(:ping, %{"t" => 12345.5})
+      assert <<18, _::binary>> = frame
+      assert {:ok, {:ping, %{"t" => 12345.5}}} = Wire.decode(frame)
+    end
+
     test "leave_room is a single byte" do
       frame = Wire.encode(:leave_room)
       assert <<12>> == frame

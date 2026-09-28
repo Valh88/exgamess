@@ -29,8 +29,13 @@ enum Frame {
 	/** Дельта состояния (зарезервировано). */
 	RoomStatePatch(patch: Dynamic);
 
-	/** Пинг (оба направления). */
-	Ping;
+	/**
+		Пинг (оба направления). `payload` не null, когда кадр несёт метку
+		синхронизации времени: клиент шлёт `{t: <свои монотонные ms>}`,
+		сервер эхирует её вместе со своим штампом `{t, ts: <unix-ms>}` —
+		источник `Room.serverNow()`. Без payload кадр однобайтовый.
+	*/
+	Ping(?payload: Dynamic);
 
 	/** Запрос с request_id (клиент → сервер): {i, t, p}. */
 	RoomRequest(requestId: Int, type: Dynamic, payload: Dynamic);

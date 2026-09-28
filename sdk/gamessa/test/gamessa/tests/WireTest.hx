@@ -121,12 +121,41 @@ class WireTest extends utest.Test {
 	}
 
 	function testSingleByteFrames() {
-		Assert.equals("12", hex(Wire.encode(Ping)));
+		Assert.equals("12", hex(Wire.encode(Ping(null))));
 		Assert.equals("0c", hex(Wire.encode(LeaveRoom)));
-		Assert.equals(Ping, Wire.decode(Bytes.ofHex("12")));
+		switch (Wire.decode(Bytes.ofHex("12"))) {
+			case Ping(null): // ок: голый ping без payload
+			case _: Assert.fail("expected bare Ping");
+		}
 		Assert.equals(LeaveRoom, Wire.decode(Bytes.ofHex("0c")));
-		Assert.equals(Wire.OP_PING, Wire.opcodeOf(Ping));
+		Assert.equals(Wire.OP_PING, Wire.opcodeOf(Ping(null)));
 		Assert.equals(Wire.OP_LEAVE_ROOM, Wire.opcodeOf(LeaveRoom));
+	}
+
+	function testPingPayloadRoundtrip() {
+		// клиентская метка времени
+		var bytes = Wire.encode(Ping(mapOf("t", 12345.5)));
+		Assert.equals(Wire.OP_PING, bytes.get(0));
+		Assert.isTrue(bytes.length > 1);
+
+		switch (Wire.decode(bytes)) {
+			case Ping(p):
+				var m:StringMap<Dynamic> = p;
+				Assert.equals(12345.5, m.get("t"));
+			case _:
+				Assert.fail("expected Ping");
+		}
+
+		// серверное эхо: метка клиента + unix-ms штамп сервера (uint64 в msgpack)
+		var echo = Wire.encode(Ping(mapOf("t", 1.5, "ts", 1700000000000.0)));
+		switch (Wire.decode(echo)) {
+			case Ping(p):
+				var m:StringMap<Dynamic> = p;
+				Assert.equals(1.5, m.get("t"));
+				Assert.equals(1700000000000.0, m.get("ts"));
+			case _:
+				Assert.fail("expected Ping");
+		}
 	}
 
 	function testEncodeRoundtrip() {

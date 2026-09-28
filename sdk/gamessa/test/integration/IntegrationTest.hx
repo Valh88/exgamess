@@ -4,6 +4,7 @@ import gamessa.Client;
 import gamessa.MatchMakeError;
 import gamessa.Room;
 import gamessa.SeatReservation;
+import gamessa.debug.LatencyTransport;
 import haxe.ds.StringMap;
 import utest.Assert;
 import utest.Async;
@@ -463,6 +464,72 @@ class IntegrationTest extends utest.Test {
 		});
 
 		async.setTimeout(10000);
+	}
+
+	/**
+		Синхронизация времени: после PONG с серверным штампом serverNow()
+		близко к локальным unix-часам (тест живёт на одной машине с сервером).
+	*/
+	function testServerNow(async:Async):Void {
+		var client = makeClient();
+
+		newUser(client, 'hx_${Std.int(Math.random() * 1000000)}', () -> {
+			joinChat(client, room -> {
+				room.onJoin.add(e -> {
+					room.ping(rtt -> {
+						// pong несёт payload {t, ts} — offset подтверждён сервером
+						Assert.isTrue(room.timeSynced());
+						var drift = Math.abs(room.serverNow() - Date.now().getTime());
+						Assert.isTrue(drift < 10_000, 'serverNow drift $drift ms');
+						room.leave();
+						async.done();
+					}, err -> Assert.fail('ping failed: $err'));
+				});
+			});
+		});
+
+		async.setTimeout(10000);
+	}
+
+	/**
+		Лаг-обёртка (gamessa.debug.LatencyTransport, 150мс ± джиттер) поверх
+		живой арены: полный цикл join → move → state-патч при имитации сети.
+	*/
+	function testLatencyJoin(async:Async):Void {
+		var client = makeClient();
+
+		newUser(client, 'hx_${Std.int(Math.random() * 1000000)}', () -> {
+			client.joinOrCreate("arena", {mode: "latency"}, res -> {
+				var room:Room<ArenaState> = client.connectRoom(res,
+					LatencyTransport.wrapWebSocket(client, res, {delay: 150, jitter: 40}));
+
+				room.onStateChange.add(s -> {
+					Assert.equals("latency", s.mode);
+
+					var me:Dynamic = Reflect.field(s.players, room.sessionId);
+					if (me == null)
+						return;
+					if (me.x != 10) {
+						room.send("move", {x: 10, y: 20});
+						return;
+					}
+
+					// PONG с offset может приехать позже патча (джиттер обёртки) —
+					// ждём подтверждение синхронизации, а не assert'им сразу
+					function checkSync():Void {
+						if (room.timeSynced()) {
+							room.leave();
+							async.done();
+						} else {
+							haxe.Timer.delay(checkSync, 50);
+						}
+					}
+					checkSync();
+				});
+			}, err -> Assert.fail('arena join failed: $err'));
+		});
+
+		async.setTimeout(20000);
 	}
 }
 

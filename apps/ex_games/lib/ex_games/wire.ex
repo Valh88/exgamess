@@ -13,7 +13,7 @@ defmodule ExGames.Wire do
   | 13 | `:room_data` | оба направления |
   | 14 | `:room_state` | сервер → клиент (полный снапшот) |
   | 15 | `:room_state_patch` | сервер → клиент (дельта; зарезервировано) |
-  | 18 | `:ping` | оба направления (однобайтовый кадр) |
+  | 18 | `:ping` | оба направления (без payload — однобайтовый; с payload — эхо для синхронизации времени) |
   | 21 | `:room_request` | клиент → сервер (запрос с request_id) |
   | 22 | `:room_response` | сервер → клиент (ответ на request_id) |
 
@@ -44,6 +44,7 @@ defmodule ExGames.Wire do
           | {:room_state, state :: term()}
           | {:room_state_patch, patch :: term()}
           | {:ping}
+          | {:ping, payload :: term()}
           | {:room_request, request_id :: non_neg_integer(), type :: String.t() | integer(),
              payload :: term()}
           | {:room_response, request_id :: non_neg_integer(), payload :: term()}
@@ -73,13 +74,16 @@ defmodule ExGames.Wire do
   def opcode_name(code), do: Map.get(@codes, code, :unknown)
 
   @doc """
-  Кодирует кадр `[opcode][msgpack]`. Для `:ping` полезной нагрузки нет —
-  кадр однобайтовый.
+  Кодирует кадр `[opcode][msgpack]`. Для `:ping` без payload кадр однобайтовый;
+  с payload — клиентская метка времени для синхронизации часов (сервер эхирует
+  её вместе со своим штампом).
   """
   @spec encode(opcode(), term()) :: frame()
   def encode(opcode, payload \\ nil)
 
-  def encode(:ping, _payload), do: <<opcode_number(:ping)::8>>
+  def encode(:ping, nil), do: <<opcode_number(:ping)::8>>
+
+  def encode(:ping, payload), do: frame(:ping, payload)
 
   def encode(:join_room, options),
     do: frame(:join_room, options)
@@ -134,6 +138,7 @@ defmodule ExGames.Wire do
   def decode(_frame), do: {:error, :invalid_frame}
 
   defp build(:join_room, options) when is_map(options), do: {:join_room, options}
+  defp build(:ping, payload), do: {:ping, payload}
   defp build(:error, payload) when is_map(payload), do: {:error, payload}
   defp build(:room_data, %{"t" => t, "p" => p}), do: {:room_data, t, p}
   defp build(:room_data, %{t: t, p: p}), do: {:room_data, t, p}

@@ -112,6 +112,9 @@ class Room<S> {
 	var retry:Int = 0;
 	var pingSentAt:Float = 0;
 
+	/** Смещение часов (unix-ms): серверное минус локальное, EMA по PONG-замерам. */
+	var serverOffset:Null<Float> = null;
+
 	/** Последний снапшот состояния (после onStateChange). Анонимное дерево,
 		типизированное параметром `S` (typedef от wire-структуры комнаты);
 		динамические ключи (sid → значение) — `Dynamic`. */
@@ -171,7 +174,10 @@ class Room<S> {
 		queueOrSend(Wire.encode(RoomRequest(requestId, type, payload)));
 	}
 
-	/** RTT-замер: отправляет PING и измеряет время до PONG. */
+	/**
+		RTT-замер: отправляет PING и измеряет время до PONG. Попутно
+		обновляет оценку серверного времени (`serverNow`).
+	*/
 	public function ping(onResult:Float->Void, onError:String->Void):Void {
 		var handler:Float->Void = null;
 		var done = false;
@@ -189,8 +195,26 @@ class Room<S> {
 			}
 		}, requestTimeoutMs);
 
-		pingSentAt = now();
-		queueOrSend(Wire.encode(Ping));
+		var t0 = now();
+		pingSentAt = t0;
+		queueOrSend(Wire.encode(Ping(timePayload(t0))));
+	}
+
+	/**
+		Оценка серверного времени (unix-миллисекунды): локальные монотонные
+		часы + смещение, оценённое по PONG-замерам (EMA; точность порядка
+		половины RTT). До первого PONG с меткой смещение неизвестно —
+		возвращаются локальные часы; после join синхронизация уходит сразу,
+		далее обновляется на каждом keepalive-PING (раз в `keepAliveMs`).
+		Годится для серверных дедлайнов/таймингов, передаваемых как unix-ms.
+	*/
+	public function serverNow():Float {
+		return now() + (serverOffset == null ? 0.0 : serverOffset);
+	}
+
+	/** true, когда оценка серверного времени подтверждена хотя бы одним PONG. */
+	public function timeSynced():Bool {
+		return serverOffset != null;
 	}
 
 	/**
@@ -242,6 +266,7 @@ class Room<S> {
 				onJoin.dispatch({data: data});
 				flushBuffer();
 				armKeepAlive();
+				syncTime();
 
 			case RoomData(type, payload):
 				onMessage.dispatch({type: type, message: payload});
@@ -268,9 +293,28 @@ class Room<S> {
 					onError.dispatch({code: code, message: message, requestId: requestId});
 				}
 
-			case Ping:
-				// ответ сервера на наш PING — резолвим RTT-замеры
-				var rtt = now() - pingSentAt;
+			case Ping(payload):
+				// ответ сервера на наш PING: резолвим RTT-замеры; с payload —
+				// обновляем смещение часов (метка эхируется, сервер добавляет
+				// свой unix-ms штамп; середина RTT — момент серверной обработки).
+				// Dynamic-значения достаются в типизированные локалы: `cast` на HL
+				// калечит Float > 2^31 (int32-насыщение)
+				var t1 = now();
+				var t0:Float = pingSentAt;
+
+				if (payload != null) {
+					var echoed:Null<Float> = payload.get("t");
+					if (echoed != null)
+						t0 = echoed;
+
+					var stamped:Null<Float> = payload.get("ts");
+					if (stamped != null) {
+						var sample:Float = stamped - (t0 + t1) / 2;
+						serverOffset = serverOffset == null ? sample : serverOffset + (sample - serverOffset) * 0.25;
+					}
+				}
+
+				var rtt = t1 - t0;
 				var handlers = pingHandlers;
 				pingHandlers = [];
 				for (handler in handlers)
@@ -415,11 +459,23 @@ class Room<S> {
 
 			if (connection.isOpen()) {
 				if (pingHandlers.length == 0)
-					queueOrSend(Wire.encode(Ping));
+					queueOrSend(Wire.encode(Ping(timePayload(now()))));
 				armKeepAlive();
 			}
 			// если isOpen() == false, handleClose вот-вот запустит reconnect
 		}, keepAliveMs);
+	}
+
+	/** Первичная синхронизация серверного времени — сразу после join. */
+	function syncTime():Void {
+		if (pingHandlers.length == 0)
+			queueOrSend(Wire.encode(Ping(timePayload(now()))));
+	}
+
+	static function timePayload(t0:Float):StringMap<Dynamic> {
+		var m = new StringMap<Dynamic>();
+		m.set("t", t0);
+		return m;
 	}
 
 	function stopKeepAlive():Void {
