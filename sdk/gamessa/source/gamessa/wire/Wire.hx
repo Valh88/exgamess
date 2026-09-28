@@ -89,6 +89,8 @@ class Wire {
 					} catch (e: Dynamic) {
 						throw new WireError('invalid ping payload (op $op): $e');
 					}
+					if (!Std.isOfType(payload, StringMap))
+						throw new WireError('ping payload (op $op) must be a map');
 				}
 				return Ping(payload);
 			case OP_LEAVE_ROOM:

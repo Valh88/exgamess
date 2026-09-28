@@ -222,7 +222,7 @@ class RoomTest extends utest.Test {
 		var t = makeJoinedRoom();
 
 		// первый ping (sync после join) — замеров ещё не было, rtt нет
-		function lastPingPayload():Dynamic {
+		function lastPingPayload():haxe.ds.StringMap<Dynamic> {
 			return switch (Wire.decode(t.transport.sent[t.transport.sent.length - 1])) {
 				case Ping(p): p;
 				case _:
