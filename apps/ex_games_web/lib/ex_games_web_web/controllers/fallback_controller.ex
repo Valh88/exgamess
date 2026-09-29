@@ -42,6 +42,8 @@ defmodule ExGamesWebWeb.FallbackController do
   end
 
   # Коды ошибок согласованы с протоколом (Colyseus-совместимые).
+  defp error_for(:not_found), do: {:not_found, 404}
+  defp error_for(:save_too_large), do: {:request_entity_too_large, 413}
   defp error_for(:unknown_user), do: {:not_found, 404}
   defp error_for(:unknown_room_type), do: {:not_found, 520}
   defp error_for(:no_room), do: {:not_found, 521}

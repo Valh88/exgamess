@@ -1,6 +1,7 @@
 package;
 
 import gamessa.Client;
+import gamessa.LeaderboardEntry;
 import gamessa.MatchMakeError;
 import gamessa.Room;
 import gamessa.SeatReservation;
@@ -530,6 +531,59 @@ class IntegrationTest extends utest.Test {
 		});
 
 		async.setTimeout(20000);
+	}
+
+	/**
+		Cloud saves + лидерборд: register → save (кириллица/вложенность) → get →
+		перезапись → list → leaderboard → delete → 404 на удалённый слот.
+	*/
+	function testSavesAndLeaderboard(async:Async):Void {
+		var client = makeClient();
+
+		newUser(client, 'hx_${Std.int(Math.random() * 1000000)}', () -> {
+			var payload = {level: 3, note: "привет мир", pos: {x: 1, y: 2}};
+
+			client.saveData("world1", payload, meta -> {
+				Assert.equals("world1", meta.key);
+				Assert.notNull(meta.updatedAt);
+
+				client.getData("world1", data -> {
+					Assert.equals(3, data.level);
+					Assert.equals("привет мир", data.note);
+					Assert.equals(1, data.pos.x);
+
+					client.saveData("world1", {level: 9}, _ -> {
+						client.getData("world1", data2 -> {
+							Assert.equals(9, data2.level);
+
+							client.listSaves(saves -> {
+								Assert.equals(1, saves.length);
+								Assert.equals("world1", saves[0].key);
+
+								client.getLeaderboard("arena", null, (entries:Array<LeaderboardEntry>) -> {
+									Assert.notNull(entries);
+									for (e in entries) {
+										Assert.isTrue(e.position >= 1);
+										Assert.isTrue(e.rating > 0);
+									}
+
+									client.deleteSave("world1", () -> {
+										client.getData("world1", _ -> {
+											Assert.fail("deleted save is still readable");
+										}, err -> {
+											Assert.equals(404, err.code);
+											async.done();
+										});
+									}, err -> Assert.fail('deleteSave failed: $err'));
+								}, err -> Assert.fail('getLeaderboard failed: $err'));
+							}, err -> Assert.fail('listSaves failed: $err'));
+						}, err -> Assert.fail('getData(2) failed: $err'));
+					}, err -> Assert.fail('saveData(2) failed: $err'));
+				}, err -> Assert.fail('getData failed: $err'));
+			}, err -> Assert.fail('saveData failed: $err'));
+		});
+
+		async.setTimeout(15000);
 	}
 }
 

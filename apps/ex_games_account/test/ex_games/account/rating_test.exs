@@ -90,4 +90,46 @@ defmodule ExGames.Account.RatingTest do
 
     assert {:error, {:bad_result, _}} = Account.record_match("arena", %{a => "win", b => :loss})
   end
+
+  test "top_ratings сортирует по убыванию и выдаёт позиции с 1" do
+    a = register_user!("r_#{System.unique_integer([:positive])}")
+    b = register_user!("r_#{System.unique_integer([:positive])}")
+    c = register_user!("r_#{System.unique_integer([:positive])}")
+
+    {:ok, _} = Account.record_match("arena", %{a => :win, b => :loss})
+    {:ok, _} = Account.record_match("arena", %{a => :win, c => :loss})
+
+    top = Account.top_ratings("arena", 10)
+    assert [%{position: 1}, %{position: 2}, %{position: 3}] = top
+    assert hd(top).user_id == a
+    # 1000 → 1016 (победа над b) → 1031 (победа над c, ожидание > 0.5 — прирост меньше)
+    assert hd(top).rating == 1031
+    assert is_binary(hd(top).username)
+    # проигравшие оба на 984: детерминированный tie-break по user_id asc
+    assert Enum.map(top, & &1.rating) == Enum.sort(Enum.map(top, & &1.rating), :desc)
+  end
+
+  test "top_ratings ограничен limit'ом и изолирован по игре" do
+    a = register_user!("r_#{System.unique_integer([:positive])}")
+    b = register_user!("r_#{System.unique_integer([:positive])}")
+
+    {:ok, _} = Account.record_match("arena", %{a => :win, b => :loss})
+    {:ok, _} = Account.record_match("chess", %{b => :win, a => :loss})
+
+    assert length(Account.top_ratings("arena", 1)) == 1
+    # в chess рейтинг a упал, b вырос — порядок другой
+    assert hd(Account.top_ratings("chess", 1)).user_id == b
+  end
+
+  test "rating_position: позиция по порядку top_ratings; без матчей — not_found" do
+    a = register_user!("r_#{System.unique_integer([:positive])}")
+    b = register_user!("r_#{System.unique_integer([:positive])}")
+    outsider = register_user!("r_#{System.unique_integer([:positive])}")
+
+    {:ok, _} = Account.record_match("arena", %{a => :win, b => :loss})
+
+    assert {:ok, 1} = Account.rating_position(a, "arena")
+    assert {:ok, 2} = Account.rating_position(b, "arena")
+    assert {:error, :not_found} = Account.rating_position(outsider, "arena")
+  end
 end

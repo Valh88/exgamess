@@ -50,6 +50,15 @@ defmodule ExGamesWebWeb.Router do
     post "/matchmake/join_by_id/:room_id", MatchmakeController, :join_by_id
     post "/matchmake/:method/:room_name", MatchmakeController, :matchmake
     get "/rooms", RoomsController, :index
+
+    # облачные сохранения (слоты payload игрока)
+    get "/saves", SavesController, :index
+    put "/saves/:key", SavesController, :update
+    get "/saves/:key", SavesController, :show
+    delete "/saves/:key", SavesController, :delete
+
+    # лидерборд по игре (топ рейтингов)
+    get "/leaderboard/:game", LeaderboardController, :show
   end
 
   # Админ-REST: требует роль admin (будущая LiveView-админка переиспользует).

@@ -12,5 +12,6 @@ interface IHttpClient {
 
 	function get(url:String, onSuccess:HttpResponse->Void, onError:HttpError->Void):Void;
 	function post(url:String, body:String, onSuccess:HttpResponse->Void, onError:HttpError->Void):Void;
+	function put(url:String, body:String, onSuccess:HttpResponse->Void, onError:HttpError->Void):Void;
 	function del(url:String, onSuccess:HttpResponse->Void, onError:HttpError->Void):Void;
 }

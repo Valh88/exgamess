@@ -188,6 +188,68 @@ class Client {
 	}
 
 	// ------------------------------------------------------------------
+	// Cloud saves
+	// ------------------------------------------------------------------
+
+	/** Сохраняет payload в слот `key` (upsert: повторный вызов перезаписывает). */
+	public function saveData(key:String, payload:Dynamic, onSuccess:SaveMeta->Void, onError:MatchMakeError->Void):Void {
+		put('/api/saves/$key', {payload: payload}, data -> onSuccess({key: data.key, updatedAt: data.updated_at}), onError);
+	}
+
+	/** Читает payload слота. */
+	public function getData(key:String, onSuccess:Dynamic->Void, onError:MatchMakeError->Void):Void {
+		http.get('$endpoint/api/saves/$key', res -> handle(res, data -> onSuccess(data.payload), onError), err -> onError(toError(err)));
+	}
+
+	/** Список слотов пользователя (метаданные, без payload). */
+	public function listSaves(onSuccess:Array<SaveMeta>->Void, onError:MatchMakeError->Void):Void {
+		http.get('$endpoint/api/saves', res -> handle(res, data -> {
+			var saves:Array<SaveMeta> = [];
+			var items:Array<Dynamic> = data.saves == null ? [] : data.saves;
+			for (item in items)
+				saves.push({key: item.key, updatedAt: item.updated_at});
+			onSuccess(saves);
+		}, onError), err -> onError(toError(err)));
+	}
+
+	/** Удаляет слот. */
+	public function deleteSave(key:String, onSuccess:Void->Void, onError:MatchMakeError->Void):Void {
+		http.del('$endpoint/api/saves/$key', res -> {
+			if (res.status < 200 || res.status >= 300)
+				onError(MatchMakeError.fromJson(res.status, res.body));
+			else
+				onSuccess();
+		}, err -> onError(toError(err)));
+	}
+
+	// ------------------------------------------------------------------
+	// Leaderboard
+	// ------------------------------------------------------------------
+
+	/** Топ рейтингов игры (позиции с 1). */
+	public function getLeaderboard(game:String, ?limit:Int, onSuccess:Array<LeaderboardEntry>->Void, onError:MatchMakeError->Void):Void {
+		var url = '$endpoint/api/leaderboard/$game';
+		if (limit != null)
+			url += '?limit=' + limit;
+
+		http.get(url, res -> handle(res, data -> {
+			var entries:Array<LeaderboardEntry> = [];
+			var items:Array<Dynamic> = data.entries == null ? [] : data.entries;
+			for (item in items)
+				entries.push({
+					position: item.position,
+					userId: item.user_id,
+					username: item.username,
+					rating: item.rating,
+					wins: item.wins,
+					losses: item.losses,
+					draws: item.draws
+				});
+			onSuccess(entries);
+		}, onError), err -> onError(toError(err)));
+	}
+
+	// ------------------------------------------------------------------
 	// Room-канал
 	// ------------------------------------------------------------------
 
@@ -236,6 +298,12 @@ class Client {
 
 	function post(path:String, body:Dynamic, onData:Dynamic->Void, onError:MatchMakeError->Void):Void {
 		http.post('$endpoint$path', haxe.Json.stringify(body), res -> {
+			handle(res, onData, onError);
+		}, err -> onError(toError(err)));
+	}
+
+	function put(path:String, body:Dynamic, onData:Dynamic->Void, onError:MatchMakeError->Void):Void {
+		http.put('$endpoint$path', haxe.Json.stringify(body), res -> {
 			handle(res, onData, onError);
 		}, err -> onError(toError(err)));
 	}

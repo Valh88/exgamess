@@ -19,6 +19,7 @@ defmodule ExGames.Account do
   alias ExGames.Account.User
   alias ExGames.Account.Rating
   alias ExGames.Account.MatchResult
+  alias ExGames.Account.Save
 
   @k_factor 32
 
@@ -315,5 +316,121 @@ defmodule ExGames.Account do
 
   defp outcome_count(uid, results, outcome) do
     if Map.get(results, uid) == outcome, do: 1, else: 0
+  end
+
+  # -------------------------------------------------------------------------
+  # Лидерборды
+  # -------------------------------------------------------------------------
+
+  @doc """
+  Топ-N игроков по рейтингу в игре (позиции с 1). Сортировка детерминированная:
+  рейтинг по убыванию, при равенстве — меньший user_id выше.
+
+      Account.top_ratings("arena", 10)
+      #=> [%{position: 1, user_id: 7, username: "ann", rating: 1120, ...}, ...]
+  """
+  @spec top_ratings(String.t(), non_neg_integer()) :: [map()]
+  def top_ratings(game \\ "default", limit \\ 50) when is_binary(game) and is_integer(limit) do
+    from(r in Rating,
+      join: u in User,
+      on: u.id == r.user_id,
+      where: r.game == ^game,
+      order_by: [desc: r.rating, asc: r.user_id],
+      limit: ^limit,
+      select: %{
+        user_id: r.user_id,
+        username: u.username,
+        rating: r.rating,
+        wins: r.wins,
+        losses: r.losses,
+        draws: r.draws
+      }
+    )
+    |> Repo.all()
+    |> Enum.with_index(1)
+    |> Enum.map(fn {entry, position} -> Map.put(entry, :position, position) end)
+  end
+
+  @doc """
+  Позиция игрока в игре (1 — первое место; порядок как в `top_ratings/2`).
+  `{:error, :not_found}`, если матчей ещё не было.
+  """
+  @spec rating_position(integer(), String.t()) :: {:ok, pos_integer()} | {:error, :not_found}
+  def rating_position(user_id, game \\ "default") when is_integer(user_id) do
+    case Repo.one(
+           from(r in Rating,
+             where: r.user_id == ^user_id and r.game == ^game,
+             select: r.rating
+           )
+         ) do
+      nil ->
+        {:error, :not_found}
+
+      rating ->
+        ahead =
+          Repo.one(
+            from(r in Rating,
+              where: r.game == ^game and
+                       (r.rating > ^rating or (r.rating == ^rating and r.user_id < ^user_id)),
+              select: count()
+            )
+          )
+
+        {:ok, ahead + 1}
+    end
+  end
+
+  # -------------------------------------------------------------------------
+  # Cloud saves
+  # -------------------------------------------------------------------------
+
+  @doc """
+  Сохраняет payload в слот `key` (upsert: повторный вызов заменяет payload).
+
+      Account.save_data(user.id, "world1", %{"level" => 3, "note" => "привет"})
+  """
+  @spec save_data(integer(), String.t(), map()) :: result(Save.t())
+  def save_data(user_id, key, payload) when is_integer(user_id) and is_binary(key) do
+    now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+
+    %Save{}
+    |> Save.changeset(%{user_id: user_id, key: key, payload: payload})
+    |> Repo.insert(
+      on_conflict: [set: [payload: payload, updated_at: now]],
+      conflict_target: [:user_id, :key]
+    )
+    |> case do
+      {:ok, save} -> {:ok, save}
+      {:error, changeset} -> {:error, changeset_errors(changeset)}
+    end
+  end
+
+  @doc "Читает payload слота; `{:error, :not_found}`, если слота нет."
+  @spec get_save(integer(), String.t()) :: {:ok, map()} | {:error, :not_found}
+  def get_save(user_id, key) when is_integer(user_id) and is_binary(key) do
+    case Repo.get_by(Save, user_id: user_id, key: key) do
+      nil -> {:error, :not_found}
+      %Save{payload: payload} -> {:ok, payload}
+    end
+  end
+
+  @doc "Список слотов пользователя (ключи и время обновления, без payload)."
+  @spec list_saves(integer()) :: [%{key: String.t(), updated_at: NaiveDateTime.t()}]
+  def list_saves(user_id) when is_integer(user_id) do
+    Repo.all(
+      from(s in Save,
+        where: s.user_id == ^user_id,
+        order_by: [desc: s.updated_at],
+        select: %{key: s.key, updated_at: s.updated_at}
+      )
+    )
+  end
+
+  @doc "Удаляет слот; `:error`, если слота не было."
+  @spec delete_save(integer(), String.t()) :: :ok | {:error, :not_found}
+  def delete_save(user_id, key) when is_integer(user_id) and is_binary(key) do
+    {count, _} = Repo.delete_all(from(s in Save, where: s.user_id == ^user_id and s.key == ^key))
+
+    if count > 0, do: :ok, else: {:error, :not_found}
   end
 end

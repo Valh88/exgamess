@@ -39,6 +39,10 @@ class SysHttpClient implements IHttpClient {
 		spawn("POST", url, body, onSuccess, onError);
 	}
 
+	public function put(url:String, body:String, onSuccess:HttpResponse->Void, onError:HttpError->Void):Void {
+		spawn("PUT", url, body, onSuccess, onError);
+	}
+
 	public function del(url:String, onSuccess:HttpResponse->Void, onError:HttpError->Void):Void {
 		spawn("DELETE", url, null, onSuccess, onError);
 	}

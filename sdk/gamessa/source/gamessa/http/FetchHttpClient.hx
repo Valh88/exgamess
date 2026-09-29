@@ -43,6 +43,10 @@ class FetchHttpClient implements IHttpClient {
 		request("POST", url, body, onSuccess, onError);
 	}
 
+	public function put(url:String, body:String, onSuccess:HttpResponse->Void, onError:HttpError->Void):Void {
+		request("PUT", url, body, onSuccess, onError);
+	}
+
 	public function del(url:String, onSuccess:HttpResponse->Void, onError:HttpError->Void):Void {
 		request("DELETE", url, null, onSuccess, onError);
 	}
