@@ -122,6 +122,176 @@ defmodule ExGamesWebWeb.Layouts do
   end
 
   @doc """
+  Лейаут тёмной консоли админ-панели: sidebar с навигацией
+  (`ExGamesWebWeb.Admin.Nav`), topbar с текущим администратором.
+
+      <Layouts.admin flash={@flash} admin_user={@admin_user} current_path="/admin">
+        ...
+      </Layouts.admin>
+
+  `bare` — центрированная карточка без sidebar (страница логина).
+  """
+  attr :flash, :map, required: true
+  attr :admin_user, :any, default: nil
+  attr :current_path, :string, default: nil
+  attr :bare, :boolean, default: false
+
+  slot :inner_block, required: true
+
+  def admin(assigns) do
+    ~H"""
+    <div
+      :if={!@bare}
+      class="flex min-h-screen bg-slate-950 text-slate-200 antialiased"
+    >
+      <%!-- Затемняющая подложка под выехавшим меню (только мобильные):
+           тап по ней закрывает --%>
+      <div
+        id="admin-sidebar-backdrop"
+        class="fixed inset-0 z-30 hidden bg-black/60 lg:hidden"
+        aria-hidden="true"
+        phx-click={
+          JS.toggle(to: "#admin-sidebar", in: "flex", out: "hidden")
+          |> JS.toggle(to: "#admin-sidebar-backdrop", in: "block", out: "hidden")
+        }
+      >
+      </div>
+
+      <%!-- Сайдбар: на узких экранах скрыт, выезжает по гамбургеру
+           (JS.toggle, чисто клиентски); на lg+ — постоянный --%>
+      <aside
+        id="admin-sidebar"
+        phx-hook=".AdminSidebar"
+        class="fixed inset-y-0 left-0 z-40 hidden w-60 shrink-0 flex-col border-r border-slate-800 bg-slate-950 shadow-2xl shadow-black/50 lg:static lg:z-auto lg:flex lg:shadow-none lg:bg-slate-900/60"
+      >
+        <div class="flex items-center gap-2 border-b border-slate-800 px-5 py-4">
+          <img src={~p"/images/logo.svg"} width="26" alt="" />
+          <span class="font-semibold tracking-wide text-slate-100">ExGames</span>
+          <span class="rounded bg-indigo-950 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-indigo-300">
+            admin
+          </span>
+          <button
+            class="ml-auto inline-flex rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-800 hover:text-slate-200 lg:hidden"
+            aria-label="Закрыть меню"
+            phx-click={
+              JS.toggle(to: "#admin-sidebar", in: "flex", out: "hidden")
+              |> JS.toggle(to: "#admin-sidebar-backdrop", in: "block", out: "hidden")
+            }
+          >
+            <.icon name="hero-x-mark" class="size-4" />
+          </button>
+        </div>
+
+        <nav class="flex-1 space-y-1 overflow-y-auto px-3 py-4">
+          <.admin_nav_link
+            :for={item <- ExGamesWebWeb.Admin.Nav.items()}
+            item={item}
+            current_path={@current_path}
+          />
+        </nav>
+
+        <div class="border-t border-slate-800 px-5 py-4">
+          <div class="truncate text-sm text-slate-300">{@admin_user && @admin_user.username}</div>
+          <.link
+            href={~p"/admin/logout"}
+            method="delete"
+            class="mt-1 inline-flex items-center gap-1.5 text-xs text-slate-500 transition-colors hover:text-rose-300"
+          >
+            <.icon name="hero-arrow-left-on-rectangle" class="size-3.5" /> Выйти
+          </.link>
+        </div>
+      </aside>
+
+      <script :type={Phoenix.LiveView.ColocatedHook} name=".AdminSidebar">
+        export default {
+          mounted() {
+            this.onKey = (e) => {
+              if (e.key !== "Escape" || this.el.classList.contains("hidden"))
+                return;
+
+              this.el.classList.add("hidden");
+              this.el.classList.remove("flex");
+
+              const backdrop = document.getElementById("admin-sidebar-backdrop");
+              if (backdrop) {
+                backdrop.classList.add("hidden");
+                backdrop.classList.remove("block");
+              }
+            };
+
+            window.addEventListener("keydown", this.onKey);
+          },
+
+          destroyed() {
+            window.removeEventListener("keydown", this.onKey);
+          }
+        }
+      </script>
+
+      <div class="flex min-w-0 flex-1 flex-col">
+        <%!-- Мобильный топбар с гамбургером (на lg+ скрыт) --%>
+        <div class="flex items-center gap-3 border-b border-slate-800 bg-slate-900/60 px-4 py-3 lg:hidden">
+          <button
+            id="admin-menu-toggle"
+            class="inline-flex items-center justify-center rounded-lg border border-slate-700 p-2 text-slate-300 transition-colors hover:bg-slate-800"
+            aria-label="Показать/скрыть меню"
+            phx-click={
+              JS.toggle(to: "#admin-sidebar", in: "flex", out: "hidden")
+              |> JS.toggle(to: "#admin-sidebar-backdrop", in: "block", out: "hidden")
+            }
+          >
+            <.icon name="hero-bars-3" class="size-5" />
+          </button>
+          <span class="font-semibold tracking-wide text-slate-100">ExGames</span>
+          <span class="rounded bg-indigo-950 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-indigo-300">
+            admin
+          </span>
+        </div>
+
+        <main class="px-5 py-6 sm:px-8 lg:px-12 lg:py-8">
+          <div class="mx-auto w-full max-w-7xl">
+            {render_slot(@inner_block)}
+          </div>
+        </main>
+      </div>
+
+      <.flash_group flash={@flash} />
+    </div>
+
+    <div
+      :if={@bare}
+      class="flex min-h-screen items-center justify-center bg-slate-950 p-4 text-slate-200"
+    >
+      <div class="w-full max-w-sm">
+        {render_slot(@inner_block)}
+      </div>
+      <.flash_group flash={@flash} />
+    </div>
+    """
+  end
+
+  attr :item, :map, required: true
+  attr :current_path, :string, default: nil
+
+  defp admin_nav_link(assigns) do
+    ~H"""
+    <.link
+      navigate={@item.path}
+      class={[
+        "flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors",
+        @current_path == @item.path &&
+          "bg-indigo-950/70 font-medium text-indigo-200 border border-indigo-900/60",
+        @current_path != @item.path &&
+          "text-slate-400 border border-transparent hover:bg-slate-800 hover:text-slate-200"
+      ]}
+    >
+      <.icon name={@item.icon} class="size-4 shrink-0" />
+      {@item.label}
+    </.link>
+    """
+  end
+
+  @doc """
   Provides dark vs light theme toggle based on themes defined in app.css.
 
   See <head> in root.html.heex which applies the theme before page load.

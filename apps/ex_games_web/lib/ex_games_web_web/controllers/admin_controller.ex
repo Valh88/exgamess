@@ -3,16 +3,25 @@ defmodule ExGamesWebWeb.AdminController do
 
   use ExGamesWebWeb, :controller
 
-  import Ecto.Query
-
   action_fallback ExGamesWebWeb.FallbackController
 
-  def list_users(conn, _params) do
-    users =
-      ExGames.Account.Repo.all(ExGames.Account.User)
-      |> ExGames.Account.Repo.preload(:roles)
-      |> Enum.map(&ExGames.Account.User.to_wire/1)
+  def list_users(conn, params) do
+    banned =
+      case params["banned"] do
+        "true" -> true
+        "false" -> false
+        _ -> nil
+      end
 
+    listing =
+      ExGames.Account.list_users(
+        search: params["search"],
+        role: params["role"],
+        banned: banned,
+        page_size: 100
+      )
+
+    users = Enum.map(listing.entries, &ExGames.Account.User.to_wire/1)
     json(conn, %{"users" => users})
   end
 
@@ -54,18 +63,8 @@ defmodule ExGamesWebWeb.AdminController do
 
   defp fetch_user(id) do
     case Integer.parse(id) do
-      {int_id, ""} ->
-        case ExGames.Account.Repo.one(
-               from u in ExGames.Account.User,
-                 where: u.id == ^int_id,
-                 preload: [:roles]
-             ) do
-          nil -> {:error, :unknown_user}
-          user -> {:ok, user}
-        end
-
-      _ ->
-        {:error, "invalid user id"}
+      {int_id, ""} -> ExGames.Account.fetch_user_by_id(int_id)
+      _ -> {:error, "invalid user id"}
     end
   end
 end

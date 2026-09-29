@@ -86,6 +86,8 @@ defmodule ExGamesWebWeb do
       import Phoenix.HTML
       # Core UI components
       import ExGamesWebWeb.CoreComponents
+      # Admin panel components (stat_card, badge, admin_table, ...)
+      import ExGamesWebWeb.AdminComponents
 
       # Common modules used in templates
       alias Phoenix.LiveView.JS

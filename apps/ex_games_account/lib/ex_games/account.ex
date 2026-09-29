@@ -81,7 +81,9 @@ defmodule ExGames.Account do
     end
   end
 
-  defp fetch_user_by_id(id) do
+  @doc "Пользователь по id (с предзагруженными ролями)."
+  @spec fetch_user_by_id(integer()) :: result(User.t())
+  def fetch_user_by_id(id) when is_integer(id) do
     case Repo.one(from(u in User, where: u.id == ^id, preload: [:roles])) do
       nil -> {:error, :unknown_user}
       user -> {:ok, user}
@@ -432,5 +434,99 @@ defmodule ExGames.Account do
     {count, _} = Repo.delete_all(from(s in Save, where: s.user_id == ^user_id and s.key == ^key))
 
     if count > 0, do: :ok, else: {:error, :not_found}
+  end
+
+  # -------------------------------------------------------------------------
+  # Пользователи: список и рейтинги (админ-панель)
+  # -------------------------------------------------------------------------
+
+  @doc """
+  Список пользователей с фильтрами и пагинацией.
+
+  Опции:
+
+    * `:search` — подстрока username;
+    * `:role` — имя роли (только пользователи, у которых она есть);
+    * `:banned` — `true` (только забаненные) / `false` (только активные);
+    * `:page` (дефолт 1), `:page_size` (дефолт 25, максимум 100).
+
+  Возвращает `%{entries: [User.t()], total: n, page: p, page_size: s}` —
+  entries с предзагруженными ролями, сортировка по username.
+  """
+  @spec list_users(keyword()) :: %{
+          entries: [User.t()],
+          total: non_neg_integer(),
+          page: pos_integer(),
+          page_size: pos_integer()
+        }
+  def list_users(opts \\ []) do
+    search = opts[:search]
+    role = opts[:role]
+    banned = opts[:banned]
+
+    page = if is_integer(opts[:page]) and opts[:page] > 0, do: opts[:page], else: 1
+
+    page_size =
+      case opts[:page_size] do
+        n when is_integer(n) and n > 0 -> min(n, 100)
+        _ -> 25
+      end
+
+    query = from(u in User)
+
+    query =
+      if is_binary(search) and search != "" do
+        where(query, [u], like(u.username, ^"%#{search}%"))
+      else
+        query
+      end
+
+    query =
+      cond do
+        banned == true -> where(query, [u], not is_nil(u.banned_at))
+        banned == false -> where(query, [u], is_nil(u.banned_at))
+        true -> query
+      end
+
+    query =
+      if is_binary(role) and role != "" do
+        role_ids =
+          from(ur in "users_roles",
+            join: r in Role,
+            on: r.id == ur.role_id,
+            where: r.name == ^role,
+            select: ur.user_id
+          )
+
+        where(query, [u], u.id in subquery(role_ids))
+      else
+        query
+      end
+
+    total = Repo.aggregate(query, :count, :id)
+
+    entries =
+      query
+      |> order_by([u], asc: u.username)
+      |> limit(^page_size)
+      |> offset(^((page - 1) * page_size))
+      |> Repo.all()
+      |> Repo.preload(:roles)
+
+    %{entries: entries, total: total, page: page, page_size: page_size}
+  end
+
+  @doc "Рейтинги пользователя по всем играм (для страницы деталей)."
+  @spec user_ratings(integer()) :: [
+          %{game: String.t(), rating: integer(), wins: integer(), losses: integer(), draws: integer()}
+        ]
+  def user_ratings(user_id) when is_integer(user_id) do
+    Repo.all(
+      from(r in Rating,
+        where: r.user_id == ^user_id,
+        order_by: [asc: r.game],
+        select: %{game: r.game, rating: r.rating, wins: r.wins, losses: r.losses, draws: r.draws}
+      )
+    )
   end
 end

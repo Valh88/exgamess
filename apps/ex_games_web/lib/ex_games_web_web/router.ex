@@ -73,6 +73,33 @@ defmodule ExGamesWebWeb.Router do
     post "/users/:id/unban", AdminController, :unban
   end
 
+  # Админ-панель (LiveView): учётные данные те же, что у игры
+  # (одна таблица users), транспорт — cookie-сессия. Сессию пишет
+  # контроллер (LiveView 1.x не умеет put_session).
+  scope "/admin", ExGamesWebWeb do
+    pipe_through :browser
+
+    post "/login_session", AdminSessionController, :create
+    delete "/logout", AdminSessionController, :delete
+  end
+
+  scope "/admin", ExGamesWebWeb.Admin do
+    pipe_through :browser
+
+    live_session :admin_login do
+      live "/login", LoginLive, :index
+    end
+
+    live_session :admin, on_mount: [{ExGamesWebWeb.Admin.Auth, :ensure_admin}] do
+      live "/", DashboardLive, :index
+      live "/users", UserIndexLive, :index
+      live "/users/:id", UserShowLive, :show
+      live "/rooms", RoomIndexLive, :index
+      live "/rooms/:id", RoomShowLive, :show
+      live "/online", OnlineLive, :index
+    end
+  end
+
   scope "/", ExGamesWebWeb do
     pipe_through :browser
 

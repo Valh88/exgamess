@@ -55,7 +55,8 @@ defmodule ExGames.Room.Server do
           tick_timer: reference() | nil,
           last_tick: integer(),
           timers: %{term() => reference()},
-          dispose_timer: reference() | nil
+          dispose_timer: reference() | nil,
+          created_at: DateTime.t() | nil
         }
 
   defstruct room_id: nil,
@@ -81,7 +82,9 @@ defmodule ExGames.Room.Server do
             # Room clock: расписание таймеров по ключам (Handle.send_after/send_interval)
             timers: %{},
             # льготное окно auto_dispose_ms (см. auto_dispose/1)
-            dispose_timer: nil
+            dispose_timer: nil,
+            # время создания (админ-панель: возраст комнаты)
+            created_at: nil
 
   # -------------------------------------------------------------------------
   # Управление жизненным циклом
@@ -205,11 +208,28 @@ defmodule ExGames.Room.Server do
              clients: non_neg_integer(),
              max_clients: non_neg_integer() | :infinity,
              locked: boolean(),
-             metadata: map()
+             metadata: map(),
+             created_at: DateTime.t() | nil
            }}
           | {:error, :unknown_room}
   def listing(room_id) do
     GenServer.call(via(room_id), :listing)
+  catch
+    :exit, _ -> {:error, :unknown_room}
+  end
+
+  @doc "Полные данные подключённых клиентов (админ-панель)."
+  @spec clients_detailed(Id.id()) :: {:ok, [Client.t()]} | {:error, :unknown_room}
+  def clients_detailed(room_id) do
+    GenServer.call(via(room_id), :client_details)
+  catch
+    :exit, _ -> {:error, :unknown_room}
+  end
+
+  @doc "Снимок синхронизируемого состояния (read-only, админ-панель)."
+  @spec state_snapshot(Id.id()) :: {:ok, term() | nil} | {:error, :unknown_room}
+  def state_snapshot(room_id) do
+    GenServer.call(via(room_id), :state_snapshot)
   catch
     :exit, _ -> {:error, :unknown_room}
   end
@@ -242,7 +262,8 @@ defmodule ExGames.Room.Server do
               metadata: create_options,
               user_state: user_state,
               logics: logics,
-              last_tick: System.monotonic_time(:millisecond)
+              last_tick: System.monotonic_time(:millisecond),
+              created_at: DateTime.utc_now() |> DateTime.truncate(:second)
             }
 
             publish_listing(state)
@@ -417,9 +438,16 @@ defmodule ExGames.Room.Server do
         clients: map_size(state.clients) + map_size(state.reserved),
         max_clients: state.max_clients,
         locked: state.locked,
-        metadata: state.metadata
+        metadata: state.metadata,
+        created_at: state.created_at
       }}, state}
   end
+
+  def handle_call(:client_details, _from, %__MODULE__{} = state),
+    do: {:reply, Map.values(state.clients), state}
+
+  def handle_call(:state_snapshot, _from, %__MODULE__{} = state),
+    do: {:reply, {:ok, state.game_state}, state}
 
   def handle_call(:list_clients, _from, %__MODULE__{} = state),
     do: {:reply, Map.keys(state.clients), state}

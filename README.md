@@ -108,7 +108,8 @@ mix test --include native      # + тесты Port-адаптера (spawn вн�
 [MATCHMAKING.md](doc/MATCHMAKING.md); дельта-синхронизация состояния —
 [DELTA_SYNC.md](doc/DELTA_SYNC.md); плановое выключение и пробы
 healthz/readyz — [DRAIN.md](doc/DRAIN.md); облачные сохранения и
-лидерборды — [DATABASE.md](doc/DATABASE.md).
+лидерборды — [DATABASE.md](doc/DATABASE.md); LiveView-админка
+(`/admin`, та же учётка admin) — [ADMIN.md](doc/ADMIN.md).
 
 ## Как писать игру
 
