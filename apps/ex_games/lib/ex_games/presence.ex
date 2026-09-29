@@ -63,30 +63,76 @@ defmodule ExGames.Presence do
   # API
   # -------------------------------------------------------------------------
 
-  @doc "Помечает пользователя онлайн; метаданные — произвольная map (string-ключи)."
+  @doc """
+  Помечает пользователя онлайн (ad-hoc: ключ = user_id, держатель — вызвавший
+  процесс). Комнатам следует использовать `track_room_user/3`.
+  """
   @spec track_user(String.t(), meta()) :: :ok
   def track_user(user_id, meta \\ %{}) when is_binary(user_id) do
     Phoenix.Tracker.track(__MODULE__, self(), @topic, user_id, meta)
     :ok
   end
 
-  @doc "Убирает пользователя из онлайн (обычно не нужен: чистится при смерти процесса)."
+  @doc """
+  Трекает присутствие пользователя **в конкретной комнате**. Внутренний ключ
+  трекера — `{user_id, room_id}`, поэтому держателей у юзера несколько (по
+  одному на комнату): уход из одной комнаты оставляет онлайн, пока юзер в
+  другой; смерть комнаты снимает её записи сама (держатель — процесс комнаты).
+  """
+  @spec track_room_user(String.t(), String.t(), meta()) :: :ok
+  def track_room_user(user_id, room_id, meta \\ %{})
+      when is_binary(user_id) and is_binary(room_id) do
+    meta =
+      meta
+      |> Map.new(fn {k, v} -> {to_string(k), v} end)
+      |> Map.merge(%{"room_id" => room_id, "user_id" => user_id})
+
+    Phoenix.Tracker.track(__MODULE__, self(), @topic, {user_id, room_id}, meta)
+    :ok
+  end
+
+  @doc "Снимает трек текущего процесса с пользователя."
   @spec untrack_user(String.t()) :: :ok
   def untrack_user(user_id) when is_binary(user_id) do
     Phoenix.Tracker.untrack(__MODULE__, self(), @topic, user_id)
     :ok
   end
 
-  @doc "Список онлайн-пользователей: %{user_id => meta}."
-  @spec list_online() :: %{String.t() => meta()}
-  def list_online do
-    Phoenix.Tracker.list(__MODULE__, @topic)
-    |> Map.new()
+  @doc "Снимает трек пользователя конкретной комнатой (см. `track_room_user/3`)."
+  @spec untrack_room_user(String.t(), String.t()) :: :ok
+  def untrack_room_user(user_id, room_id) when is_binary(user_id) and is_binary(room_id) do
+    Phoenix.Tracker.untrack(__MODULE__, self(), @topic, {user_id, room_id})
+    :ok
   end
 
-  @doc "Онлайн ли пользователь."
+  @doc """
+  Список онлайн-пользователей: `%{user_id => meta}` — по записи на юзера
+  (при нескольких комнатах метаданные одной из них; см. `list_online_entries/0`).
+  """
+  @spec list_online() :: %{String.t() => meta()}
+  def list_online do
+    Enum.reduce(entries(), %{}, fn
+      {key, meta}, acc -> Map.put_new(acc, identity_user(key), meta)
+    end)
+  end
+
+  @doc "Сырые записи по парам юзер×комната: `%{{user_id, room_id} => meta}`."
+  @spec list_online_entries() :: %{{String.t(), String.t()} => meta()}
+  def list_online_entries do
+    Enum.reduce(entries(), %{}, fn
+      {key, meta}, acc when is_tuple(key) -> Map.put(acc, key, meta)
+      {_key, _meta}, acc -> acc
+    end)
+  end
+
+  @doc "Онлайн ли пользователь (хотя бы в одной комнате)."
   @spec online?(String.t()) :: boolean()
-  def online?(user_id), do: Map.has_key?(list_online(), user_id)
+  def online?(user_id), do: Enum.any?(entries(), fn {key, _} -> identity_user(key) == user_id end)
+
+  defp entries, do: Phoenix.Tracker.list(__MODULE__, @topic)
+
+  defp identity_user({user_id, _room_id}), do: user_id
+  defp identity_user(user_id) when is_binary(user_id), do: user_id
 
   @doc "Подписка на события presence (см. `event`)."
   @spec subscribe() :: :ok

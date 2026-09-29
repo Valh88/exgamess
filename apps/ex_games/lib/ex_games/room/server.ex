@@ -337,6 +337,7 @@ defmodule ExGames.Room.Server do
                   state_frame = push_state_snapshot(pid, state)
                   state = %__MODULE__{state | last_sent_state: state.game_state}
 
+                  track_presence(state, client)
                   publish_listing(state)
 
                   :telemetry.execute(
@@ -991,6 +992,7 @@ defmodule ExGames.Room.Server do
   defp remove_client(%__MODULE__{} = state, client, reason, close_code, message) do
     state = clear_reconnect_slot(state, client.session_id)
     state = drop_monitor(state, client.session_id)
+    untrack_presence(state, client)
 
     state = %__MODULE__{
       state
@@ -1094,6 +1096,53 @@ defmodule ExGames.Room.Server do
 
   defp reconnect_enabled?(state),
     do: Keyword.get(state.options, :reconnect_ttl, @reconnect_ttl) not in [false, 0]
+
+  # -------------------------------------------------------------------------
+  # Presence: трекинг пользователя на время его жизни в комнате.
+  # Трекает сам процесс комнаты (смерть комнаты чистит записи сама);
+  # ключ {user_id, room_id} — комнаты-держатели независимы, уход из одной
+  # не гасит онлайн юзера в другой.
+  # -------------------------------------------------------------------------
+
+  defp track_presence(%__MODULE__{} = state, %Client{} = client) do
+    case presence_identity(client.auth) do
+      {user_id, username} ->
+        ExGames.Presence.track_room_user(user_id, state.room_id, %{"username" => username})
+
+      nil ->
+        :ok
+    end
+
+    :ok
+  end
+
+  defp untrack_presence(%__MODULE__{} = state, %Client{} = client) do
+    case presence_identity(client.auth) do
+      {user_id, _username} ->
+        ExGames.Presence.untrack_room_user(user_id, state.room_id)
+
+      nil ->
+        :ok
+    end
+  end
+
+  # user_id + username из auth-данных брони (%{"user_id" => …} веб-слоя);
+  # анонимные комнаты (без user_id в auth) не трекаются
+  defp presence_identity(auth) when is_map(auth) do
+    user_id = auth_value(auth, "user_id") || auth_value(auth, :user_id)
+
+    if user_id in [nil, ""], do: nil,
+      else: {to_string(user_id), auth_value(auth, "username") || auth_value(auth, :username)}
+  end
+
+  defp presence_identity(_auth), do: nil
+
+  defp auth_value(auth, key) do
+    case Map.get(auth, key) do
+      nil -> nil
+      value -> value |> to_string() |> String.trim() |> case do "" -> nil; trimmed -> trimmed end
+    end
+  end
 
   defp clear_reconnect_slot(%__MODULE__{} = state, session_id) do
     Enum.reduce(state.reconnecting, state, fn {token, {sid, timer}}, %__MODULE__{} = acc ->

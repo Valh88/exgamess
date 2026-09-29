@@ -65,6 +65,13 @@ defmodule ExGamesWebWeb.MatchmakeController do
     {:error, "reconnection_token required"}
   end
 
-  defp auth_data(conn), do: %{"user_id" => conn.assigns.current_user.id}
+  # user_id + username едут в auth-данные брони: ядро трекает presence
+  # (ExGames.Presence) и показывает клиента в админке по этим полям
+  defp auth_data(conn),
+    do: %{
+      "user_id" => conn.assigns.current_user.id,
+      "username" => conn.assigns.current_user.username
+    }
+
   defp options(conn), do: conn.params["options"] || %{}
 end
