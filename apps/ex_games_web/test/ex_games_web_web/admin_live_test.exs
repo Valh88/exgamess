@@ -158,6 +158,28 @@ defmodule ExGamesWebWeb.AdminLiveTest do
     refute unbanned.banned_at
   end
 
+  test "отмена бана: submit после cancel не банит (кнопка type=button)", %{conn: conn, admin: admin} do
+    {:ok, victim} = Account.register(%{"username" => "victim2", "password" => "secret123"})
+
+    {:ok, view, _html} = admin_conn(conn, admin) |> live("/admin/users")
+
+    view |> element("#user-filters") |> render_change(%{"filter" => %{"search" => "victim2"}})
+
+    view
+    |> element("button[phx-click='ask_ban'][phx-value-id='#{victim.id}']")
+    |> render_click()
+
+    # «Отмена» + дошедший следом submit формы (тот самый баг: кнопка без
+    # type внутри формы сабмитит) — юзер должен остаться небаненым
+    view
+    |> element("#ban-form button[phx-click='cancel_ban']")
+    |> render_click()
+
+    assert {:ok, user} = Account.fetch_user_by_id(victim.id)
+    refute user.banned_at
+    refute render(view) =~ "Забанить"
+  end
+
   test "выдача и снятие роли", %{conn: conn, admin: admin} do
     {:ok, user} = Account.register(%{"username" => "promotee", "password" => "secret123"})
 

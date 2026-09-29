@@ -76,19 +76,23 @@ defmodule ExGamesWebWeb.AdminComponents do
   # -------------------------------------------------------------------------
 
   attr :tone, :string, default: "slate", doc: "slate | green | red | amber | indigo"
+  attr :rest, :global, doc: "например, title для нативного tooltip"
 
   slot :inner_block, required: true
 
   def badge(assigns) do
     ~H"""
-    <span class={[
-      "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium",
-      @tone == "slate" && "bg-slate-800 text-slate-300",
-      @tone == "green" && "bg-emerald-950 text-emerald-300 border border-emerald-900",
-      @tone == "red" && "bg-rose-950 text-rose-300 border border-rose-900",
-      @tone == "amber" && "bg-amber-950 text-amber-300 border border-amber-900",
-      @tone == "indigo" && "bg-indigo-950 text-indigo-300 border border-indigo-900"
-    ]}>
+    <span
+      class={[
+        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium",
+        @tone == "slate" && "bg-slate-800 text-slate-300",
+        @tone == "green" && "bg-emerald-950 text-emerald-300 border border-emerald-900",
+        @tone == "red" && "bg-rose-950 text-rose-300 border border-rose-900",
+        @tone == "amber" && "bg-amber-950 text-amber-300 border border-amber-900",
+        @tone == "indigo" && "bg-indigo-950 text-indigo-300 border border-indigo-900"
+      ]}
+      {@rest}
+    >
       {render_slot(@inner_block)}
     </span>
     """
@@ -129,6 +133,9 @@ defmodule ExGamesWebWeb.AdminComponents do
 
   attr :kind, :string, default: "default", doc: "default | primary | danger | ghost"
   attr :disabled, :boolean, default: false
+  # дефолт "button": кнопка внутри <.form> без type сабмитит форму
+  # (браузерный дефолт submit) — сабмит только явно type="submit"
+  attr :type, :string, default: "button"
 
   attr :rest, :global,
     include: ~w(phx-click phx-value-id phx-value-role href navigate method confirm title)
@@ -138,6 +145,7 @@ defmodule ExGamesWebWeb.AdminComponents do
   def admin_button(assigns) do
     ~H"""
     <button
+      type={@type}
       disabled={@disabled}
       class={[
         "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
@@ -162,6 +170,10 @@ defmodule ExGamesWebWeb.AdminComponents do
   attr :rows, :list, required: true, doc: "список строк или %LiveStream{}"
   attr :row_id, :any, default: nil, doc: "fn row -> DOM id (для streams обязателен)"
   attr :empty, :string, default: "Пусто"
+  # table-fixed: ширины колонок задаются классами col[:class] и не зависят
+  # от содержимого строк — не «съезжают» при перерисовке ячеек
+  attr :fixed, :boolean, default: false
+  attr :min_w, :string, default: nil, doc: "min-width таблицы при fixed (напр. \"760px\")"
 
   slot :col, required: true do
     attr :label, :string
@@ -181,7 +193,7 @@ defmodule ExGamesWebWeb.AdminComponents do
 
     ~H"""
     <div class="overflow-x-auto rounded-xl border border-slate-800">
-      <table class="w-full min-w-full text-sm">
+      <table style={@min_w && "min-width: #{@min_w}"} class={["w-full text-sm", @fixed && "table-fixed"]}>
         <thead>
           <tr class="border-b border-slate-800 bg-slate-900 text-left text-xs uppercase tracking-wider text-slate-500">
             <th :for={col <- @col} class={["px-4 py-2.5 font-medium", col[:class]]}>{col[:label]}</th>

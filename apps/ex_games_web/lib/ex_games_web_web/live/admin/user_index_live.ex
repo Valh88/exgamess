@@ -66,7 +66,12 @@ defmodule ExGamesWebWeb.Admin.UserIndexLive do
     end
   end
 
-  def handle_event("cancel_ban", _params, socket), do: {:noreply, assign(socket, ban_user: nil)}
+  def handle_event("cancel_ban", _params, socket),
+    do: {:noreply, assign(socket, ban_user: nil, ban_form: nil)}
+
+  # страховка: submit формы мог прийти после cancel_ban (гонка двух событий)
+  def handle_event("confirm_ban", _params, %{assigns: %{ban_user: nil}} = socket),
+    do: {:noreply, socket}
 
   def handle_event("confirm_ban", %{"ban" => %{"reason" => reason}}, socket) do
     user = socket.assigns.ban_user
@@ -193,7 +198,7 @@ defmodule ExGamesWebWeb.Admin.UserIndexLive do
             class="flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-slate-200 placeholder:text-slate-600 focus:border-indigo-600 focus:outline-none"
           />
           <.admin_button phx-click="cancel_ban" kind="ghost">Отмена</.admin_button>
-          <.admin_button kind="danger">Забанить</.admin_button>
+          <.admin_button type="submit" kind="danger">Забанить</.admin_button>
         </.form>
       </.panel>
 
@@ -239,16 +244,20 @@ defmodule ExGamesWebWeb.Admin.UserIndexLive do
           rows={@streams.users}
           row_id={fn {id, _u} -> id end}
           empty="Никого не найдено"
+          fixed
+          min_w="760px"
         >
-          <:col :let={u} label="Пользователь">
-            <.link
-              navigate={~p"/admin/users/#{u.id}"}
-              class="font-medium text-indigo-300 transition-colors hover:text-indigo-200"
-            >
-              {u.username}
-            </.link>
+          <:col :let={u} label="Пользователь" class="w-52">
+            <div class="truncate">
+              <.link
+                navigate={~p"/admin/users/#{u.id}"}
+                class="font-medium text-indigo-300 transition-colors hover:text-indigo-200"
+              >
+                {u.username}
+              </.link>
+            </div>
           </:col>
-          <:col :let={u} label="Роли">
+          <:col :let={u} label="Роли" class="w-44">
             <div class="flex flex-wrap gap-1">
               <.badge
                 :for={r <- u.roles}
@@ -265,8 +274,12 @@ defmodule ExGamesWebWeb.Admin.UserIndexLive do
               <span :if={u.roles == []} class="text-slate-600">—</span>
             </div>
           </:col>
-          <:col :let={u} label="Статус">
-            <.badge :if={u.banned_at} tone="red">бан с {format_date(u.banned_at)}</.badge>
+          <:col :let={u} label="Статус" class="w-44">
+            <span :if={u.banned_at} title={"Причина: #{u.ban_reason || "не указана"}"}>
+              <.badge tone="red" title={"Причина: #{u.ban_reason || "не указана"}"}>
+                бан с {format_date(u.banned_at)}
+              </.badge>
+            </span>
             <.badge :if={!u.banned_at} tone="green">активен</.badge>
           </:col>
           <:action :let={u}>

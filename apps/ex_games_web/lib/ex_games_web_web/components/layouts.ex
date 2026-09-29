@@ -142,8 +142,11 @@ defmodule ExGamesWebWeb.Layouts do
     ~H"""
     <div
       :if={!@bare}
-      class="flex min-h-screen bg-slate-950 text-slate-200 antialiased"
+      class="min-h-screen bg-slate-950 text-slate-200 antialiased"
     >
+      <%!-- Консоль центрирована (max-w-7xl): сайдбар не прилипает к краю
+           вьюпорта, а встаёт вровень с контентом --%>
+      <div class="mx-auto flex w-full max-w-7xl">
       <%!-- Затемняющая подложка под выехавшим меню (только мобильные):
            тап по ней закрывает --%>
       <div
@@ -219,11 +222,27 @@ defmodule ExGamesWebWeb.Layouts do
               }
             };
 
+            // JS.toggle управляет инлайн-стилем display, который перебивает
+            // lg:flex — после resize до десктопа сбрасываем инлайны,
+            // иначе меню «пропадает» до перезагрузки страницы
+            this.onResize = () => {
+              if (window.innerWidth < 1024)
+                return;
+
+              this.el.style.display = "";
+
+              const backdrop = document.getElementById("admin-sidebar-backdrop");
+              if (backdrop)
+                backdrop.style.display = "";
+            };
+
             window.addEventListener("keydown", this.onKey);
+            window.addEventListener("resize", this.onResize);
           },
 
           destroyed() {
             window.removeEventListener("keydown", this.onKey);
+            window.removeEventListener("resize", this.onResize);
           }
         }
       </script>
@@ -249,10 +268,9 @@ defmodule ExGamesWebWeb.Layouts do
         </div>
 
         <main class="px-5 py-6 sm:px-8 lg:px-12 lg:py-8">
-          <div class="mx-auto w-full max-w-7xl">
-            {render_slot(@inner_block)}
-          </div>
+          {render_slot(@inner_block)}
         </main>
+      </div>
       </div>
 
       <.flash_group flash={@flash} />

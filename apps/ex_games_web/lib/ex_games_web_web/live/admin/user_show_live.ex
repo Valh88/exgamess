@@ -108,7 +108,11 @@ defmodule ExGamesWebWeb.Admin.UserShowLive do
             >
               {r.name}
             </.badge>
-            <.badge :if={@user.banned_at} tone="red">
+            <.badge
+              :if={@user.banned_at}
+              tone="red"
+              title={"Причина: #{@user.ban_reason || "не указана"}"}
+            >
               забанен с {@user.banned_at |> Calendar.strftime("%d.%m.%Y")}
             </.badge>
           </div>
@@ -145,7 +149,7 @@ defmodule ExGamesWebWeb.Admin.UserShowLive do
             class="flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-slate-200 placeholder:text-slate-600 focus:border-indigo-600 focus:outline-none"
           />
           <.admin_button phx-click="cancel_ban" kind="ghost">Отмена</.admin_button>
-          <.admin_button kind="danger">Забанить</.admin_button>
+          <.admin_button type="submit" kind="danger">Забанить</.admin_button>
         </.form>
       </.panel>
 
