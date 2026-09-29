@@ -36,7 +36,8 @@ defmodule ExGames.MixProject do
       {:msgpax, "~> 2.3"},
       # Телеметрия жизненного цикла комнат/матчмейкера.
       {:telemetry, "~> 1.2"},
-      {:jason, "~> 1.4"}
+      {:jason, "~> 1.4"},
+      {:lua, "~> 1.0.2"},
     ]
   end
 end
