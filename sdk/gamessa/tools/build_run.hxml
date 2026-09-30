@@ -1,0 +1,5 @@
+# Сборка раннера `gamessa run` (bin/run.n, коммитится).
+# Пересборка: haxe tools/build_run.hxml  (из каталога SDK)
+-cp tools
+-main Run
+-hl bin/run.hl
