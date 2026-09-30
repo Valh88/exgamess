@@ -274,6 +274,51 @@ defmodule ExGames.RoomLogicsLuaTest do
   end
 
   # -------------------------------------------------------------------------
+  # state_key: ветки общего состояния (мульти-модули не затирают друг друга)
+  # -------------------------------------------------------------------------
+
+  defmodule BranchLua.Physics do
+    use ExGames.Room.Logics.Lua,
+      script: Path.expand("../support/lua/ping.lua", __DIR__),
+      state_key: "physics"
+  end
+
+  defmodule BranchLua.Economy do
+    use ExGames.Room.Logics.Lua,
+      script: Path.expand("../support/lua/hit.lua", __DIR__),
+      state_key: "economy"
+  end
+
+  defmodule BranchLua.Room do
+    use ExGames.Room, logic: [BranchLua.Physics, BranchLua.Economy]
+
+    @impl true
+    def room_init(_options, _room), do: {:ok, nil}
+  end
+
+  test "state_key: каждый модуль публикует в свою ветку game_state" do
+    {:ok, room_id} = Rooms.start(BranchLua.Room)
+    {sid, transport} = join!(room_id)
+
+    FakeTransport.send_frame(room_id, sid, Wire.encode(:room_data, {"ping", %{}}))
+    assert {:ok, {:room_data, "pong", _}} = Wire.decode(wait_for(transport, {:room_data, "pong"}))
+
+    FakeTransport.send_frame(room_id, sid, Wire.encode(:room_data, {"hit", %{}}))
+    assert {:ok, {:room_data, "hit_seen", _}} =
+             Wire.decode(wait_for(transport, {:room_data, "hit_seen"}))
+
+    # обе ветки живы одновременно — публикация одной не затёрла другую
+    assert eventually(fn ->
+             match?(
+               {:ok, %{"physics" => %{"pings" => 1}, "economy" => %{"hits" => 1}}},
+               Server.state_snapshot(room_id)
+             )
+           end)
+
+    Rooms.stop(room_id)
+  end
+
+  # -------------------------------------------------------------------------
   # Хелперы (по образцу room_lifecycle_test)
   # -------------------------------------------------------------------------
 

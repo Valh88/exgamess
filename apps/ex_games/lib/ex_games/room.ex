@@ -345,6 +345,18 @@ defmodule ExGames.Room do
     GenServer.cast(via(room.room_id), {:set_state, ExGames.Serialization.to_wire(game_state)})
   end
 
+  @doc """
+  Публикует документ в ОДНУ корневую ветку общего состояния
+  (`game_state[key] = doc`), не затирая остальные ветки — для
+  мульти-Lua/мульти-модульных комнат, где каждый модуль владеет своей
+  веткой (`state_key` моста). `set_state/2` при этом заменяет корень
+  целиком.
+  """
+  @spec set_state_branch(handle(), String.t() | atom(), term()) :: :ok
+  def set_state_branch(%__MODULE__.Handle{} = room, key, doc) do
+    GenServer.cast(via(room.room_id), {:set_state_branch, key, ExGames.Serialization.to_wire(doc)})
+  end
+
   @doc "Список подключённых клиентов."
   @spec clients(handle()) :: [ExGames.Id.id()]
   def clients(%__MODULE__.Handle{} = room) do

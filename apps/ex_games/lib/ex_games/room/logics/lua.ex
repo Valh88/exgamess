@@ -211,11 +211,11 @@ defmodule ExGames.Room.Logics.Lua do
 
     child_opts =
       [id: id, adapter: LuaAdapter, script: script] ++
-        Keyword.take(config, [:args, :max_instructions, :max_call_depth, :haxe])
+        Keyword.take(config, [:args, :max_instructions, :max_call_depth, :haxe, :state_key])
 
     case DynamicSupervisor.start_child(ExGames.LogicSupervisor, {LogicServer, child_opts}) do
       {:ok, _pid} ->
-        {:ok, %{id: id, room_id: room.room_id, script: script, last_state: nil}}
+        {:ok, %{id: id, room_id: room.room_id, script: script, state_key: Keyword.get(config, :state_key), last_state: nil}}
 
       {:error, {:already_started, _}} ->
         {:stop, {:lua_logic_already_started, id}}
@@ -344,10 +344,18 @@ defmodule ExGames.Room.Logics.Lua do
       [Map.get(options, :lua_haxe), Map.get(options, "lua_haxe"), Map.get(options, :haxe), Map.get(options, "haxe")]
       |> Enum.any?(&(&1 == true))
 
+    state_key =
+      Map.get(options, :lua_state_key) || Map.get(options, "lua_state_key") ||
+        Map.get(options, :state_key) || Map.get(options, "state_key")
+
     [script: script, args: List.wrap(args), haxe: haxe?]
+    |> put_option(options, :state_key, state_key)
     |> put_limit(options, :max_instructions)
     |> put_limit(options, :max_call_depth)
   end
+
+  defp put_option(config, _options, _key, nil), do: config
+  defp put_option(config, _options, key, value), do: Keyword.put(config, key, value)
 
   defp put_limit(config, options, key) do
     case Map.get(options, key) || Map.get(options, Atom.to_string(key)) do
@@ -377,8 +385,17 @@ defmodule ExGames.Room.Logics.Lua do
     end
   end
 
+  # state_key: документ модуля публикуется в СВОЮ корневую ветку общего
+  # состояния (Room.set_state_branch/3) — модули не затирают друг друга.
+  # Без state_key документ заменяет корень (прямой режим).
   defp publish_and_apply(state, handle, effects, new_state) do
-    unless new_state == state.last_state, do: set_state(handle, new_state)
+    unless new_state == state.last_state do
+      case Map.get(state, :state_key) do
+        nil -> set_state(handle, new_state)
+        key -> ExGames.Room.set_state_branch(handle, key, new_state)
+      end
+    end
+
     apply_effects(handle, effects)
     {:ok, %{state | last_state: new_state}}
   end

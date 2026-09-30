@@ -604,6 +604,13 @@ defmodule ExGames.Room.Server do
   def handle_cast({:set_state, wire_state}, %__MODULE__{} = state),
     do: {:noreply, %__MODULE__{state | game_state: wire_state, state_dirty: true}}
 
+  # ветка общего состояния (мульти-модули): game_state[key] = doc,
+  # остальные ветки не трогаем
+  def handle_cast({:set_state_branch, key, wire_doc}, %__MODULE__{} = state) do
+    game_state = Map.put(state.game_state || %{}, key, wire_doc)
+    {:noreply, %__MODULE__{state | game_state: game_state, state_dirty: true}}
+  end
+
   def handle_cast({:client_left, session_id, :closed}, state) do
     case Map.get(state.clients, session_id) do
       nil -> {:noreply, state}
