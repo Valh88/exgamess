@@ -6,5 +6,8 @@
 # RoomTest тянет Room → WebSocketTransport → hxWebSockets
 -lib hxWebSockets
 
+# серверная половина Sync (@:rpc): диспетчеры + серверные стабы
+-D gamessa-server
+
 # interp (eval) — без внешних зависимостей; для node: замените на --js bin/RunTests.js + node bin/RunTests.js
 --interp

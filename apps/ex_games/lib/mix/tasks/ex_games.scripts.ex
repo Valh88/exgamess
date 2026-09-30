@@ -57,7 +57,7 @@ defmodule Mix.Tasks.ExGames.Scripts do
         Path.extname(entry) == ".hx" ->
           class = Path.rootname(entry)
 
-          if String.contains?(File.read!(path), "ServerLogic") do
+          if script?(File.read!(path)) do
             out_rel = Path.join(Path.dirname(rel_path), class <> ".lua")
             out = Path.join([ctx.root, "priv", "lua", out_rel])
 
@@ -76,6 +76,13 @@ defmodule Mix.Tasks.ExGames.Scripts do
     :ok
   end
 
+  # ServerLogic-наследник (прямой или через Sync с @:rpc)
+  @sync_regex ~r/extends\s+[\w.]*\bSync\b/
+
+  defp script?(content) do
+    String.contains?(content, "ServerLogic") or Regex.match?(@sync_regex, content)
+  end
+
   defp build!(ctx, dir, class, out) do
     File.mkdir_p!(Path.dirname(out))
 
@@ -90,7 +97,18 @@ defmodule Mix.Tasks.ExGames.Scripts do
             source -> ["-cp", source]
           end
       end
-      |> Kernel.++(["-cp", dir, "-main", class, "-D", "lua-ver=5.3", "-lua", out])
+      |> Kernel.++([
+        "-cp",
+        dir,
+        "-main",
+        class,
+        "-D",
+        "lua-ver=5.3",
+        "-D",
+        "gamessa-server",
+        "-lua",
+        out
+      ])
 
     case System.cmd("haxe", haxe_args, into: IO.stream(:stdio, :line)) do
       {_, 0} -> Mix.shell().info("built #{class} -> #{out}")

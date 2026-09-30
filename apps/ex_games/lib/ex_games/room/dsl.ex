@@ -30,9 +30,9 @@ defmodule ExGames.Room.DSL do
     message_clauses(env) |> Enum.map(& &1.type) |> Enum.reject(&(&1 == :_)) |> Enum.uniq()
   end
 
-  @doc "Объявленные типы запросов."
+  @doc "Объявленные типы запросов (:_ — wildcard, не тип)."
   def request_types(env) do
-    request_clauses(env) |> Enum.map(& &1.type) |> Enum.uniq()
+    request_clauses(env) |> Enum.map(& &1.type) |> Enum.reject(&(&1 == :_)) |> Enum.uniq()
   end
 
   @doc "quote-список def-клавз handle_message по накопленным клавзам."
@@ -90,12 +90,21 @@ defmodule ExGames.Room.DSL do
   def generate_request_defs(env) do
     for %{type: type, pattern: pattern, body: body, room: r, client: c, state: s} <-
           request_clauses(env) do
+      # wildcard :_ матчит любой тип: фактический тип доступен в клейзе
+      # переменной `type` (или `_type`, если тело её не использует)
+      type_pattern =
+        if type == :_ do
+          if body_uses_var?(body, :type), do: Macro.var(:type, nil), else: Macro.var(:_type, nil)
+        else
+          type
+        end
+
       quote do
         def handle_request(
               unquote(Macro.var(r, nil)),
               unquote(Macro.var(c, nil)),
               request_id,
-              unquote(type),
+              unquote(type_pattern),
               unquote(pattern),
               unquote(Macro.var(s, nil))
             ) do
@@ -121,6 +130,7 @@ defmodule ExGames.Room.DSL do
     message_types = message_types(env)
     request_types = request_types(env)
     wildcard? = :_ in Enum.map(message_clauses(env), & &1.type)
+    request_wildcard? = :_ in Enum.map(request_clauses(env), & &1.type)
 
     [
       # модуль мог определить интроспекцию сам (напр. мост Lua с типами
@@ -141,6 +151,12 @@ defmodule ExGames.Room.DSL do
         quote do
           @doc false
           def __message_wildcard__, do: unquote(wildcard?)
+        end
+      end,
+      unless Module.defines?(env.module, {:__request_wildcard__, 0}) do
+        quote do
+          @doc false
+          def __request_wildcard__, do: unquote(request_wildcard?)
         end
       end
     ]

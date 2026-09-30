@@ -183,11 +183,17 @@ local Class = _hx_e();
 local Enum = _hx_e();
 
 local Array = _hx_e()
+__gamessa_script_ServerLogic = _hx_e()
+__gamessa_script_Sync = _hx_e()
+local ChatSync = _hx_e()
 __lua_lib_luautf8_Utf8 = _G.require("lua-utf8")
-local MLogic = _hx_e()
 local Math = _hx_e()
+local Reflect = _hx_e()
 local String = _hx_e()
 local Std = _hx_e()
+__gamessa_script_Effect = _hx_e()
+__gamessa_script_ScriptFn = _hx_e()
+__gamessa_script_ScriptWire = _hx_e()
 __haxe_Exception = _hx_e()
 __haxe_NativeStackTrace = _hx_e()
 __haxe_ValueException = _hx_e()
@@ -195,6 +201,8 @@ __haxe_exceptions_PosException = _hx_e()
 __haxe_exceptions_NotImplementedException = _hx_e()
 __haxe_iterators_ArrayIterator = _hx_e()
 __haxe_iterators_ArrayKeyValueIterator = _hx_e()
+__lua_Boot = _hx_e()
+__lua_UserData = _hx_e()
 __lua_Thread = _hx_e()
 
 local _hx_bind, _hx_bit, _hx_staticToInstance, _hx_funcToField, _hx_maxn, _hx_print, _hx_apply_self, _hx_box_mr, _hx_bit_clamp, _hx_table, _hx_bit_raw
@@ -545,41 +553,254 @@ Array.prototype.resize = function(self,len)
   end;
 end
 
-MLogic.new = {}
-MLogic.__name__ = true
-MLogic.init = function(_args) 
-  do return _hx_o({__fields__={count=true,joins=true},count=0,joins=_hx_e()}) end;
+Array.prototype.__class__ =  Array
+
+__gamessa_script_ServerLogic.new = function() 
+  local self = _hx_new(__gamessa_script_ServerLogic.prototype)
+  __gamessa_script_ServerLogic.super(self)
+  return self
 end
-MLogic.call = function(fn,args,state) 
-  if (fn == "join") then 
-    local sid = args[1];
-    state.joins[sid] = true;
-    do return _hx_tab_array({[0]=_hx_tab_array({[0]="broadcast", "haxe_joined", _hx_o({__fields__={sid=true},sid=sid})}, 3)}, 1) end;
-  end;
-  if ((fn == "message") and (args[1] == "add")) then 
-    local payload = args[3];
-    state.count = _hx_dyn_add(state.count,payload.n);
-    do return _hx_tab_array({[0]=_hx_tab_array({[0]="broadcast", "added", _hx_o({__fields__={total=true},total=state.count})}, 3)}, 1) end;
-  end;
-  if (fn == "request") then 
-    if (args[1] == "echo") then 
-      local payload = args[3];
-      local n = payload.n;
-      do return _hx_o({__fields__={to=true,doubled=true},to=args[2],doubled=n * 2}) end;
-    end;
+__gamessa_script_ServerLogic.super = function(self) 
+end
+__gamessa_script_ServerLogic.__name__ = true
+__gamessa_script_ServerLogic.prototype = _hx_e();
+__gamessa_script_ServerLogic.prototype.init = function(self,_args) 
+  _G.error(__haxe_Exception.thrown("ServerLogic: override init()"),0);
+end
+__gamessa_script_ServerLogic.prototype.call = function(self,_fn,_state) 
+  do return nil end
+end
+__gamessa_script_ServerLogic.prototype.reply = function(self,_fn,_state) 
+  do return nil end
+end
+__gamessa_script_ServerLogic.prototype.tick = function(self,_dt,_state) 
+end
+
+__gamessa_script_ServerLogic.prototype.__class__ =  __gamessa_script_ServerLogic
+
+__gamessa_script_Sync.new = function() 
+  local self = _hx_new(__gamessa_script_Sync.prototype)
+  __gamessa_script_Sync.super(self)
+  return self
+end
+__gamessa_script_Sync.super = function(self) 
+  __gamessa_script_ServerLogic.super(self);
+end
+__gamessa_script_Sync.__name__ = true
+__gamessa_script_Sync.__lower = function(e) 
+  if (e == nil) then 
     do return nil end;
   end;
-  do return nil end;
+  local _g = _hx_tab_array({}, 0);
+  local _g1 = 0;
+  while (_g1 < e.length) do _hx_do_first_1 = false;
+    
+    local x = e[_g1];
+    _g1 = _g1 + 1;
+    local tmp;
+    local tmp1 = x[1];
+    if (tmp1) == 0 then 
+      local type = x[2];
+      local payload = x[3];
+      tmp = _hx_tab_array({[0]="broadcast", type, payload}, 3);
+    elseif (tmp1) == 1 then 
+      local sid = x[2];
+      local type = x[3];
+      local payload = x[4];
+      tmp = _hx_tab_array({[0]="send_to", sid, type, payload}, 4);
+    elseif (tmp1) == 2 then 
+      local sid = x[2];
+      tmp = _hx_tab_array({[0]="kick", sid}, 2);
+    elseif (tmp1) == 3 then 
+      tmp = _hx_tab_array({[0]="lock"}, 1);
+    elseif (tmp1) == 4 then 
+      tmp = _hx_tab_array({[0]="unlock"}, 1);
+    elseif (tmp1) == 5 then 
+      local metadata = x[2];
+      tmp = _hx_tab_array({[0]="set_metadata", metadata}, 2); end;
+    _g:push(tmp);
+  end;
+  do return _g end;
 end
-MLogic.tick = function(_dt,_state) 
+__gamessa_script_Sync.prototype = _hx_e();
+__gamessa_script_Sync.prototype.set_caller = function(self,v) 
+  self.caller = v do return self.caller end
 end
-MLogic.main = function() 
-  M = {}
-  function M.init(a) return __hx_toplain(MLogic.init(a)) end;
-  function M.call(fn, a, s) return __hx_toplain(MLogic.call(fn, a, s)), __hx_toplain(s) end;
-  function M.tick(dt, s) MLogic.tick(dt, s); return nil, __hx_toplain(s) end;
-  M.schema = { messages = { 'add' } }
+__gamessa_script_Sync.prototype.set_state = function(self,v) 
+  self.state = v do return self.state end
 end
+__gamessa_script_Sync.prototype.bind = function(self,room) 
+  self.room = room;
+end
+__gamessa_script_Sync.prototype.onJoin = function(self,_sid,_auth) 
+  do return nil end
+end
+__gamessa_script_Sync.prototype.onLeave = function(self,_sid,_reason) 
+  do return nil end
+end
+
+__gamessa_script_Sync.prototype.__class__ =  __gamessa_script_Sync
+__gamessa_script_Sync.__super__ = __gamessa_script_ServerLogic
+setmetatable(__gamessa_script_Sync.prototype,{__index=__gamessa_script_ServerLogic.prototype})
+
+ChatSync.new = function() 
+  local self = _hx_new(ChatSync.prototype)
+  ChatSync.super(self)
+  return self
+end
+ChatSync.super = function(self) 
+  __gamessa_script_Sync.super(self);
+end
+ChatSync.__name__ = true
+ChatSync.usernameOf = function(v) 
+  local name = Reflect.field(v, "username");
+  if (name == nil) then 
+    do return "anon" end;
+  else
+    do return Std.string(name) end;
+  end;
+end
+ChatSync.messages = function() 
+  do return _hx_tab_array({[0]="say", "seq", "history"}, 3) end;
+end
+ChatSync.__lower = function(e) 
+  if (e == nil) then 
+    do return nil end;
+  end;
+  local _g = _hx_tab_array({}, 0);
+  local _g1 = 0;
+  while (_g1 < e.length) do _hx_do_first_1 = false;
+    
+    local x = e[_g1];
+    _g1 = _g1 + 1;
+    local tmp;
+    local tmp1 = x[1];
+    if (tmp1) == 0 then 
+      local type = x[2];
+      local payload = x[3];
+      tmp = _hx_tab_array({[0]="broadcast", type, payload}, 3);
+    elseif (tmp1) == 1 then 
+      local sid = x[2];
+      local type = x[3];
+      local payload = x[4];
+      tmp = _hx_tab_array({[0]="send_to", sid, type, payload}, 4);
+    elseif (tmp1) == 2 then 
+      local sid = x[2];
+      tmp = _hx_tab_array({[0]="kick", sid}, 2);
+    elseif (tmp1) == 3 then 
+      tmp = _hx_tab_array({[0]="lock"}, 1);
+    elseif (tmp1) == 4 then 
+      tmp = _hx_tab_array({[0]="unlock"}, 1);
+    elseif (tmp1) == 5 then 
+      local metadata = x[2];
+      tmp = _hx_tab_array({[0]="set_metadata", metadata}, 2); end;
+    _g:push(tmp);
+  end;
+  do return _g end;
+end
+ChatSync.__callWire = function(fn,a,s) 
+  local wire = __gamessa_script_ScriptWire.fromWire(fn, a);
+  if (__gamessa_script_ScriptWire.isRequest(wire)) then 
+    do return ChatSync.__inst:reply(wire, s) end;
+  end;
+  do return ChatSync.__lower(ChatSync.__inst:call(wire, s)) end;
+end
+ChatSync.main = function() 
+  ChatSync.__inst = ChatSync.new();
+  __logic_inst = ChatSync.__inst
+M = {}
+function M.init(a) return __hx_toplain(__logic_inst:init(a)) end
+function M.call(fn, a, s) return __hx_toplain(ChatSync.__callWire(fn, a, s)), __hx_toplain(s) end
+function M.tick(dt, s) __logic_inst:tick(dt, s); return nil, __hx_toplain(s) end
+M.schema = { messages = __hx_toplain(ChatSync.messages()), state = { history = { map = { n = "number", sid = "string", text = "string" } }, seq = "number", users = { map = "string" }, version = "number" } }
+end
+ChatSync.prototype = _hx_e();
+ChatSync.prototype.init = function(self,_args) 
+  do return _hx_o({__fields__={seq=true,version=true,users=true,history=true},seq=0,version=2,users=_hx_e(),history=_hx_e()}) end
+end
+ChatSync.prototype.__im_say = function(self,text) 
+  self.state.seq = self.state.seq + 1;
+  local n = self.state.seq;
+  local name = ChatSync.usernameOf(Reflect.field(self.state.users, self.caller));
+  self.state.history[Std.string(n)] = _hx_o({__fields__={n=true,sid=true,text=true},n=n,sid=self.caller,text=text});
+  if (n > 30) then 
+    local value = nil;
+    self.state.history[Std.string(n - 30)] = value;
+  end;
+  do return _hx_tab_array({[0]=__gamessa_script_Effect.Broadcast("say", _hx_o({__fields__={n=true,sid=true,name=true,text=true},n=n,sid=self.caller,name=name,text=text}))}, 1) end
+end
+ChatSync.prototype.__im_seq = function(self) 
+  do return self.state.seq end
+end
+ChatSync.prototype.__im_history = function(self) 
+  do return self.state.history end
+end
+ChatSync.prototype.onJoin = function(self,sid,auth) 
+  local name = ChatSync.usernameOf(auth);
+  self.state.users[sid] = name;
+  do return _hx_tab_array({[0]=__gamessa_script_Effect.Broadcast("joined", _hx_o({__fields__={sid=true,name=true,v=true},sid=sid,name=name,v=2}))}, 1) end
+end
+ChatSync.prototype.onLeave = function(self,sid,_reason) 
+  local value = nil;
+  self.state.users[sid] = value;
+  do return _hx_tab_array({[0]=__gamessa_script_Effect.Broadcast("left", _hx_o({__fields__={sid=true},sid=sid}))}, 1) end
+end
+ChatSync.prototype.call = function(self,fn,s) 
+  self:set_state(s);
+  local tmp = fn[1];
+  if (tmp) == 0 then 
+    local sid = fn[2];
+    local auth = fn[3];
+    self:set_caller(sid);
+    do return self:onJoin(sid, auth) end;
+  elseif (tmp) == 1 then 
+    local sid = fn[2];
+    local reason = fn[3];
+    self:set_caller(sid);
+    do return self:onLeave(sid, reason) end;
+  elseif (tmp) == 2 then 
+    local type = fn[2];
+    local sid = fn[3];
+    local payload = fn[4];
+    self:set_caller(sid);
+    if (type == "say") then 
+      local text = Reflect.field(payload, "text");
+      do return self:__im_say(text) end;
+    end;
+    do return nil end;else
+  do return nil end; end;
+end
+ChatSync.prototype.reply = function(self,fn,s) 
+  self:set_state(s);
+  if (fn[1] == 3) then 
+    local type = fn[2];
+    local sid = fn[3];
+    local payload = fn[4];
+    self:set_caller(sid);
+    if (type == "seq") then 
+      do return self:__im_seq() end;
+    end;
+    if (type == "history") then 
+      do return self:__im_history() end;
+    end;
+    do return nil end;
+  else
+    do return nil end;
+  end;
+end
+ChatSync.prototype.say = function(self,text) 
+  do return self:__im_say(text) end
+end
+ChatSync.prototype.seq = function(self) 
+  do return self:__im_seq() end
+end
+ChatSync.prototype.history = function(self) 
+  do return self:__im_history() end
+end
+
+ChatSync.prototype.__class__ =  ChatSync
+ChatSync.__super__ = __gamessa_script_Sync
+setmetatable(ChatSync.prototype,{__index=__gamessa_script_Sync.prototype})
 
 Math.new = {}
 Math.__name__ = true
@@ -598,6 +819,31 @@ Math.min = function(a,b)
     do return (0/0) end;
   else
     do return _G.math.min(a, b) end;
+  end;
+end
+
+Reflect.new = {}
+Reflect.__name__ = true
+Reflect.field = function(o,field) 
+  if (_G.type(o) == "string") then 
+    if (field == "length") then 
+      do return _hx_wrap_if_string_field(o,'length') end;
+    else
+      do return String.prototype[field] end;
+    end;
+  else
+    local _hx_status, _hx_result = pcall(function() 
+    
+        do return o[field] end;
+      return _hx_pcall_default
+    end)
+    if not _hx_status and _hx_result == "_hx_pcall_break" then
+    elseif not _hx_status then 
+      local _g = _hx_result;
+      do return nil end;
+    elseif _hx_result ~= _hx_pcall_default then
+      return _hx_result
+    end;
   end;
 end
 
@@ -777,6 +1023,8 @@ String.prototype.substr = function(self,pos,len)
   do return __lua_lib_luautf8_Utf8.sub(self, pos + 1, pos + len) end
 end
 
+String.prototype.__class__ =  String
+
 Std.new = {}
 Std.__name__ = true
 Std.string = function(s) 
@@ -788,6 +1036,59 @@ Std.int = function(x)
   else
     do return _hx_bit_clamp(x) end;
   end;
+end
+_hxClasses["gamessa.script.Effect"] = { __ename__ = true, __constructs__ = _hx_tab_array({[0]="Broadcast","SendTo","Kick","Lock","Unlock","SetMetadata"},6)}
+__gamessa_script_Effect = _hxClasses["gamessa.script.Effect"];
+__gamessa_script_Effect.Broadcast = function(type,payload) local _x = _hx_tab_array({[0]="Broadcast",0,type,payload,__enum__=__gamessa_script_Effect}, 4); return _x; end 
+__gamessa_script_Effect.SendTo = function(sid,type,payload) local _x = _hx_tab_array({[0]="SendTo",1,sid,type,payload,__enum__=__gamessa_script_Effect}, 5); return _x; end 
+__gamessa_script_Effect.Kick = function(sid) local _x = _hx_tab_array({[0]="Kick",2,sid,__enum__=__gamessa_script_Effect}, 3); return _x; end 
+__gamessa_script_Effect.Lock = _hx_tab_array({[0]="Lock",3,__enum__ = __gamessa_script_Effect},2)
+
+__gamessa_script_Effect.Unlock = _hx_tab_array({[0]="Unlock",4,__enum__ = __gamessa_script_Effect},2)
+
+__gamessa_script_Effect.SetMetadata = function(metadata) local _x = _hx_tab_array({[0]="SetMetadata",5,metadata,__enum__=__gamessa_script_Effect}, 3); return _x; end 
+_hxClasses["gamessa.script.ScriptFn"] = { __ename__ = true, __constructs__ = _hx_tab_array({[0]="Join","Leave","Message","Request"},4)}
+__gamessa_script_ScriptFn = _hxClasses["gamessa.script.ScriptFn"];
+__gamessa_script_ScriptFn.Join = function(sid,auth) local _x = _hx_tab_array({[0]="Join",0,sid,auth,__enum__=__gamessa_script_ScriptFn}, 4); return _x; end 
+__gamessa_script_ScriptFn.Leave = function(sid,reason) local _x = _hx_tab_array({[0]="Leave",1,sid,reason,__enum__=__gamessa_script_ScriptFn}, 4); return _x; end 
+__gamessa_script_ScriptFn.Message = function(type,sid,payload) local _x = _hx_tab_array({[0]="Message",2,type,sid,payload,__enum__=__gamessa_script_ScriptFn}, 5); return _x; end 
+__gamessa_script_ScriptFn.Request = function(type,sid,payload) local _x = _hx_tab_array({[0]="Request",3,type,sid,payload,__enum__=__gamessa_script_ScriptFn}, 5); return _x; end 
+
+__gamessa_script_ScriptWire.new = {}
+__gamessa_script_ScriptWire.__name__ = true
+__gamessa_script_ScriptWire.fromWire = function(fn,args) 
+  local a1 = __gamessa_script_ScriptWire.get(args, 1);
+  local a2 = __gamessa_script_ScriptWire.get(args, 2);
+  local a3 = __gamessa_script_ScriptWire.get(args, 3);
+  if (fn == "join") then 
+    do return __gamessa_script_ScriptFn.Join(a1, a2) end;
+  end;
+  if (fn == "leave") then 
+    do return __gamessa_script_ScriptFn.Leave(a1, a2) end;
+  end;
+  if (fn == "request") then 
+    do return __gamessa_script_ScriptFn.Request(a1, a2, a3) end;
+  end;
+  do return __gamessa_script_ScriptFn.Message((function() 
+    local _hx_1
+    if (fn == "message") then 
+    _hx_1 = a1; else 
+    _hx_1 = fn; end
+    return _hx_1
+  end )(), a2, a3) end;
+end
+__gamessa_script_ScriptWire.isRequest = function(fn) 
+  if (fn[1] == 3) then 
+    local _g = fn[2];
+    local _g = fn[3];
+    local _g = fn[4];
+    do return true end;
+  else
+    do return false end;
+  end;
+end
+__gamessa_script_ScriptWire.get = function(args,i) 
+  do return args[i] end;
 end
 
 __haxe_Exception.new = function(message,previous,native) 
@@ -809,6 +1110,15 @@ __haxe_Exception.super = function(self,message,previous,native)
   end;
 end
 __haxe_Exception.__name__ = true
+__haxe_Exception.thrown = function(value) 
+  if (__lua_Boot.__instanceof(value, __haxe_Exception)) then 
+    do return value:get_native() end;
+  else
+    local e = __haxe_ValueException.new(value);
+    e.__skipStack = e.__skipStack + 1;
+    do return e end;
+  end;
+end
 __haxe_Exception.prototype = _hx_e();
 __haxe_Exception.prototype.toString = function(self) 
   do return self:get_message() end
@@ -816,6 +1126,11 @@ end
 __haxe_Exception.prototype.get_message = function(self) 
   do return self.__exceptionMessage end
 end
+__haxe_Exception.prototype.get_native = function(self) 
+  do return self.__nativeException end
+end
+
+__haxe_Exception.prototype.__class__ =  __haxe_Exception
 
 __haxe_NativeStackTrace.new = {}
 __haxe_NativeStackTrace.__name__ = true
@@ -851,6 +1166,8 @@ __haxe_ValueException.super = function(self,value,previous,native)
 end
 __haxe_ValueException.__name__ = true
 __haxe_ValueException.prototype = _hx_e();
+
+__haxe_ValueException.prototype.__class__ =  __haxe_ValueException
 __haxe_ValueException.__super__ = __haxe_Exception
 setmetatable(__haxe_ValueException.prototype,{__index=__haxe_Exception.prototype})
 
@@ -872,6 +1189,8 @@ __haxe_exceptions_PosException.prototype = _hx_e();
 __haxe_exceptions_PosException.prototype.toString = function(self) 
   do return Std.string(Std.string(Std.string(Std.string(Std.string(Std.string(Std.string(Std.string(Std.string("") .. Std.string(__haxe_Exception.prototype.toString(self))) .. Std.string(" in ")) .. Std.string(self.posInfos.className)) .. Std.string(".")) .. Std.string(self.posInfos.methodName)) .. Std.string(" at ")) .. Std.string(self.posInfos.fileName)) .. Std.string(":")) .. Std.string(self.posInfos.lineNumber) end
 end
+
+__haxe_exceptions_PosException.prototype.__class__ =  __haxe_exceptions_PosException
 __haxe_exceptions_PosException.__super__ = __haxe_Exception
 setmetatable(__haxe_exceptions_PosException.prototype,{__index=__haxe_Exception.prototype})
 
@@ -888,6 +1207,8 @@ __haxe_exceptions_NotImplementedException.super = function(self,message,previous
 end
 __haxe_exceptions_NotImplementedException.__name__ = true
 __haxe_exceptions_NotImplementedException.prototype = _hx_e();
+
+__haxe_exceptions_NotImplementedException.prototype.__class__ =  __haxe_exceptions_NotImplementedException
 __haxe_exceptions_NotImplementedException.__super__ = __haxe_exceptions_PosException
 setmetatable(__haxe_exceptions_NotImplementedException.prototype,{__index=__haxe_exceptions_PosException.prototype})
 
@@ -915,8 +1236,10 @@ __haxe_iterators_ArrayIterator.prototype.next = function(self)
    end)()] end
 end
 
+__haxe_iterators_ArrayIterator.prototype.__class__ =  __haxe_iterators_ArrayIterator
+
 __haxe_iterators_ArrayKeyValueIterator.new = function(array) 
-  local self = _hx_new()
+  local self = _hx_new(__haxe_iterators_ArrayKeyValueIterator.prototype)
   __haxe_iterators_ArrayKeyValueIterator.super(self,array)
   return self
 end
@@ -924,6 +1247,121 @@ __haxe_iterators_ArrayKeyValueIterator.super = function(self,array)
   self.array = array;
 end
 __haxe_iterators_ArrayKeyValueIterator.__name__ = true
+__haxe_iterators_ArrayKeyValueIterator.prototype = _hx_e();
+
+__haxe_iterators_ArrayKeyValueIterator.prototype.__class__ =  __haxe_iterators_ArrayKeyValueIterator
+
+__lua_Boot.new = {}
+__lua_Boot.__name__ = true
+__lua_Boot.__instanceof = function(o,cl) 
+  if (cl == nil) then 
+    do return false end;
+  end;
+  local cl1 = cl;
+  if (cl1) == Array then 
+    do return __lua_Boot.isArray(o) end;
+  elseif (cl1) == Bool then 
+    do return _G.type(o) == "boolean" end;
+  elseif (cl1) == Dynamic then 
+    do return o ~= nil end;
+  elseif (cl1) == Float then 
+    do return _G.type(o) == "number" end;
+  elseif (cl1) == Int then 
+    if (_G.type(o) == "number") then 
+      do return _hx_bit_clamp(o) == o end;
+    else
+      do return false end;
+    end;
+  elseif (cl1) == String then 
+    do return _G.type(o) == "string" end;
+  elseif (cl1) == _G.table then 
+    do return _G.type(o) == "table" end;
+  elseif (cl1) == __lua_Thread then 
+    do return _G.type(o) == "thread" end;
+  elseif (cl1) == __lua_UserData then 
+    do return _G.type(o) == "userdata" end;else
+  if (((o ~= nil) and (_G.type(o) == "table")) and (_G.type(cl) == "table")) then 
+    local tmp;
+    if (__lua_Boot.__instanceof(o, Array)) then 
+      tmp = Array;
+    else
+      if (__lua_Boot.__instanceof(o, String)) then 
+        tmp = String;
+      else
+        local cl = o.__class__;
+        tmp = (function() 
+          local _hx_1
+          if (cl ~= nil) then 
+          _hx_1 = cl; else 
+          _hx_1 = nil; end
+          return _hx_1
+        end )();
+      end;
+    end;
+    if (__lua_Boot.extendsOrImplements(tmp, cl)) then 
+      do return true end;
+    end;
+    if ((function() 
+      local _hx_2
+      if (cl == Class) then 
+      _hx_2 = o.__name__ ~= nil; else 
+      _hx_2 = false; end
+      return _hx_2
+    end )()) then 
+      do return true end;
+    end;
+    if ((function() 
+      local _hx_3
+      if (cl == Enum) then 
+      _hx_3 = o.__ename__ ~= nil; else 
+      _hx_3 = false; end
+      return _hx_3
+    end )()) then 
+      do return true end;
+    end;
+    do return o.__enum__ == cl end;
+  else
+    do return false end;
+  end; end;
+end
+__lua_Boot.isArray = function(o) 
+  if (_G.type(o) == "table") then 
+    if ((o.__enum__ == nil) and (_G.getmetatable(o) ~= nil)) then 
+      do return _G.getmetatable(o).__index == Array.prototype end;
+    else
+      do return false end;
+    end;
+  else
+    do return false end;
+  end;
+end
+__lua_Boot.extendsOrImplements = function(cl1,cl2) 
+  if ((cl1 == nil) or (cl2 == nil)) then 
+    do return false end;
+  else
+    if (cl1 == cl2) then 
+      do return true end;
+    else
+      if (cl1.__interfaces__ ~= nil) then 
+        local intf = cl1.__interfaces__;
+        local _g = 1;
+        local _g1 = _hx_table.maxn(intf) + 1;
+        while (_g < _g1) do _hx_do_first_1 = false;
+          
+          _g = _g + 1;
+          local i = _g - 1;
+          if (__lua_Boot.extendsOrImplements(intf[i], cl2)) then 
+            do return true end;
+          end;
+        end;
+      end;
+    end;
+  end;
+  do return __lua_Boot.extendsOrImplements(cl1.__super__, cl2) end;
+end
+
+__lua_UserData.new = {}
+__lua_UserData.__name__ = true
 
 __lua_Thread.new = {}
 __lua_Thread.__name__ = true
@@ -967,16 +1405,41 @@ end
 local _hx_static_init = function()
   
   String.__name__ = true;
-  Array.__name__ = true;
+  Array.__name__ = true;__gamessa_script_Sync.__stateLua = "\"any\"";
+  
+  ChatSync.VERSION = 2;
+  
+  ChatSync.HISTORY_MAX = 30;
+  
+  ChatSync.__stateLua = "{ history = { map = { n = \"number\", sid = \"string\", text = \"string\" } }, seq = \"number\", users = { map = \"string\" }, version = \"number\" }";
+  
+  
 end
 
-_hx_dyn_add = function(a,b)
-  if (_G.type(a) == 'string' or _G.type(b) == 'string') then
-    return Std.string(a)..Std.string(b)
-  else
-    return a + b;
-  end;
+_hx_table = {}
+_hx_table.pack = _G.table.pack or function(...)
+    return {...}
+end
+_hx_table.unpack = _G.table.unpack or _G.unpack
+_hx_table.maxn = _G.table.maxn or function(t)
+  local maxn=0;
+  for i in pairs(t) do
+    maxn=type(i)=='number'and i>maxn and i or maxn
+  end
+  return maxn
 end;
+
+_hx_wrap_if_string_field = function(o, fld)
+  if _G.type(o) == 'string' then
+    if fld == 'length' then
+      return _G.string.len(o)
+    else
+      return String.prototype[fld]
+    end
+  else
+    return o[fld]
+  end
+end
 
 function _hx_handle_error(obj)
   local message = tostring(obj)
@@ -989,7 +1452,7 @@ end
 
 _hx_static_init();
 local success, err = _G.xpcall(function() 
-  MLogic.main();
+  ChatSync.main();
   _hx_luv.run();
 end, _hx_handle_error)
 if not success then _G.error(err) end

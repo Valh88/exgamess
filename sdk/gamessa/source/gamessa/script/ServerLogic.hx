@@ -11,31 +11,31 @@ package gamessa.script;
 	  typedef ChatState = { seq:Int, users:haxe.DynamicAccess<String> };
 
 	  class ChatHx extends gamessa.script.ServerLogic<ChatState> {
-	    public static function messages():Array<String>
-	      return ["say"];
+		public static function messages():Array<String>
+		  return ["say"];
 
-	    override function init(_args:Dynamic):ChatState
-	      return { seq: 0, users: {} };
+		override function init(_args:Dynamic):ChatState
+		  return { seq: 0, users: {} };
 
-	    override function call(fn:ScriptFn, state:ChatState):Array<Effect> {
-	      switch (fn) {
-	        case Message("say", sid, payload):
-	          return [Broadcast("say", {...})];   // или null — без эффектов
-	        case _: return null;
-	      }
-	    }
+		override function call(fn:ScriptFn, state:ChatState):Array<Effect> {
+		  switch (fn) {
+			case Message("say", sid, payload):
+			  return [Broadcast("say", {...})];   // или null — без эффектов
+			case _: return null;
+		  }
+		}
 
-	    override function tick(dt:Float, state:ChatState):Void {}
+		override function tick(dt:Float, state:ChatState):Void {}
 	  }
 
 	`@:autoBuild`-макрос (`ServerLogicBuilder`) генерирует в наследника:
 	  * Lua-биндинг M (main() + {эффекты, state} + `__hx_toplain` на
-	    границах) — только под `-lua`; имена M.schema.messages берутся из
-	    статической `messages()`, форма state — из typedef'а TState
-	    (тип и есть схема: Int/Float→number, String→string, Bool→boolean,
-	    DynamicAccess<X>→map, Array<X>→list, анонимная структура→таблица);
+		границах) — только под `-lua`; имена M.schema.messages берутся из
+		статической `messages()`, форма state — из typedef'а TState
+		(тип и есть схема: Int/Float→number, String→string, Bool→boolean,
+		DynamicAccess<X>→map, Array<X>→list, анонимная структура→таблица);
 	  * `__lower` — понижение `Array<Effect>` в сырые массивы контракта
-	    (доступно и на клиенте — предсказание эффектов);
+		(доступно и на клиенте — предсказание эффектов);
 	  * `__stateLua` — сгенерированный литерал state-схемы (для тестов).
 
 	Кросс-таргетность: на hl/js класс — обычный Haxe-класс (без M/биндинга),
@@ -44,8 +44,11 @@ package gamessa.script;
 	Haxe-скриптов не нужна.
 **/
 @:autoBuild(gamessa.script.ServerLogicBuilder.build())
-class ServerLogic<TState> {
-	public function new() {}
+class ServerLogic<TState>
+{
+	public function new()
+	{
+	}
 
 	/** Старт: начальный документ состояния. */
 	function init(_args:Dynamic):TState
@@ -55,6 +58,18 @@ class ServerLogic<TState> {
 	function call(_fn:ScriptFn, _state:TState):Array<Effect>
 		return null;
 
+	/**
+		Ответ на request-вызов (`ScriptFn.Request`; клиент ждёт RoomResponse).
+		Вернуть значение-ответ — уйдёт запросившему; null = «обработчика
+		нет» — мост ответит ошибкой. Значение — любой документ
+		(number/string/bool/структура/массив). Наследники `Sync` получают
+		диспетчер @:rpc-методов с возвратом значения автоматически.
+	**/
+	function reply(_fn:ScriptFn, _state:TState):Dynamic
+		return null;
+
 	/** Тик комнаты. Мутировать state; возврат не нужен. */
-	function tick(_dt:Float, _state:TState):Void {}
+	function tick(_dt:Float, _state:TState):Void
+	{
+	}
 }

@@ -280,6 +280,19 @@ defmodule ExGames.RoomLogicsLuaTest do
              )
            end)
 
+    # request-поток через Haxe-чанк: значение-ответ (MLogic.call вернул
+    # документ, а не массив эффектов)
+    FakeTransport.send_frame(room_id, sid, Wire.encode(:room_request, {11, "echo", %{"n" => 21}}))
+
+    assert {:ok, {:room_response, 11, %{"to" => ^sid, "doubled" => 42}}} =
+             Wire.decode(wait_for(transport, {:room_response, 11}))
+
+    # request без обработчика в чанке — ошибка с request_id
+    FakeTransport.send_frame(room_id, sid, Wire.encode(:room_request, {12, "nope", %{}}))
+
+    assert {:ok, {:error, %{"code" => 526, "message" => "unknown request", "request_id" => 12}}} =
+             Wire.decode(wait_for(transport, :error))
+
     Rooms.stop(room_id)
   end
 
@@ -325,6 +338,56 @@ defmodule ExGames.RoomLogicsLuaTest do
                Server.state_snapshot(room_id)
              )
            end)
+
+    Rooms.stop(room_id)
+  end
+
+  # -------------------------------------------------------------------------
+  # Request-поток: wildcard-клейза моста → M.call("request", …)
+  # -------------------------------------------------------------------------
+
+  defmodule ReqLua.Logic do
+    use ExGames.Room.Logics.Lua, script: Path.expand("../support/lua/request.lua", __DIR__)
+  end
+
+  defmodule ReqLua.Room do
+    use ExGames.Room, logic: [ReqLua.Logic]
+
+    @impl true
+    def room_init(_options, _room), do: {:ok, nil}
+  end
+
+  test "request-поток: интроспекция wildcard'а у тонкого модуля" do
+    assert ReqLua.Logic.__request_types__() == []
+    assert ReqLua.Logic.__request_wildcard__() == true
+  end
+
+  test "мост: request через Lua-скрипт — значение-ответ клиенту" do
+    {:ok, room_id} = Rooms.start(ReqLua.Room)
+    {sid, transport} = join!(room_id)
+
+    FakeTransport.send_frame(room_id, sid, Wire.encode(:room_request, {7, "answer", %{"q" => "hlt"}}))
+
+    assert {:ok, {:room_response, 7, %{"to" => ^sid, "q" => "hlt", "n" => 1}}} =
+             Wire.decode(wait_for(transport, {:room_response, 7}))
+
+    # второй запрос — счётчик в state скрипта растёт
+    FakeTransport.send_frame(room_id, sid, Wire.encode(:room_request, {8, "answer", %{"q" => "x"}}))
+
+    assert {:ok, {:room_response, 8, %{"n" => 2}}} =
+             Wire.decode(wait_for(transport, {:room_response, 8}))
+
+    Rooms.stop(room_id)
+  end
+
+  test "мост: request без обработчика в скрипте — ошибка с request_id" do
+    {:ok, room_id} = Rooms.start(ReqLua.Room)
+    {sid, transport} = join!(room_id)
+
+    FakeTransport.send_frame(room_id, sid, Wire.encode(:room_request, {9, "nope", %{}}))
+
+    assert {:ok, {:error, %{"code" => 526, "message" => "unknown request", "request_id" => 9}}} =
+             Wire.decode(wait_for(transport, :error))
 
     Rooms.stop(room_id)
   end

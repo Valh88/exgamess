@@ -1,0 +1,21 @@
+{
+  "messages": [
+    "say",
+    "seq",
+    "history"
+  ],
+  "state": {
+    "history": {
+      "map": {
+        "n": "number",
+        "sid": "string",
+        "text": "string"
+      }
+    },
+    "seq": "number",
+    "users": {
+      "map": "string"
+    },
+    "version": "number"
+  }
+}

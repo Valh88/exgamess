@@ -4,11 +4,12 @@
 	Конвенция (в проекте, использующем gamessa):
 
 	  <root>/server_scripts/**​/Xxx.hx  — РЕКУРСИВНО: каждый .hx (на любой
-	      глубине), наследующий gamessa.script.ServerLogic, компилируется в
-	      СВОЙ чанк <root>/priv/lua/<относительный путь>/<Xxx>.lua
-	      (зеркало дерева server_scripts; путь — для lua_script: моста).
-	      .hx без ServerLogic и подкаталоги — общие исходники своего
-	      каталога (попадают в чанки через -cp, отдельно не собираются).
+		  глубине), наследующий gamessa.script.ServerLogic или
+		  gamessa.script.Sync (@:rpc), компилируется в СВОЙ чанк
+		  <root>/priv/lua/<относительный путь>/<Xxx>.lua (зеркало дерева
+		  server_scripts; путь — для lua_script: моста) с -D gamessa-server.
+		  .hx без них и подкаталоги — общие исходники своего каталога
+		  (попадают в чанки через -cp, отдельно не собираются).
 
 	Запуск:
 	  haxelib run gamessa run [roots...]     # через haxelib
@@ -21,22 +22,27 @@
 	или env GAMESSA_SDK (-cp). Зависимости самой либы haxelib подтягивает сам.
 	Пересборка раннера: haxe tools/build_run.hxml (из каталога SDK).
 **/
+
 import sys.FileSystem;
 import sys.io.File;
 
-class Run {
-	static function main() {
+class Run
+{
+	static function main()
+	{
 		final args = Sys.args().copy();
 
 		// haxelib run gamessa ... : последний аргумент — каталог установки либы
 		var libDir:Null<String> = null;
-		if (args.length > 0 && FileSystem.exists(args[args.length - 1]) && FileSystem.isDirectory(args[args.length - 1])) {
+		if (args.length > 0 && FileSystem.exists(args[args.length - 1]) && FileSystem.isDirectory(args[args.length - 1]))
+		{
 			libDir = args[args.length - 1];
 			args.pop();
 		}
 
 		final cmd = args.length > 0 ? args.shift() : "run";
-		switch (cmd) {
+		switch (cmd)
+		{
 			case "run":
 				runAll(args.length > 0 ? args : ["."], libDir);
 			case _:
@@ -46,7 +52,8 @@ class Run {
 		}
 	}
 
-	static function runAll(roots:Array<String>, haxelibDir:Null<String>) {
+	static function runAll(roots:Array<String>, haxelibDir:Null<String>)
+	{
 		final libMode = haxeHasGamessa();
 		final sourceCp = libMode ? null : findSource(haxelibDir);
 
@@ -54,16 +61,19 @@ class Run {
 			Sys.println("sdk: -lib gamessa (haxelib)");
 		else if (sourceCp != null)
 			Sys.println("sdk: -cp " + sourceCp + " (haxelib dev gamessa <путь> включит -lib)");
-		else {
+		else
+		{
 			Sys.println("WARN: gamessa не найден ни в haxelib, ни findUp, ни GAMESSA_SDK");
 			Sys.println("      (haxelib dev gamessa <путь к sdk> — рекомендуемый способ)");
 		}
 
 		var built = 0;
 
-		for (root in roots) {
+		for (root in roots)
+		{
 			final scriptsDir = root + "/server_scripts";
-			if (!FileSystem.exists(scriptsDir)) {
+			if (!FileSystem.exists(scriptsDir))
+			{
 				Sys.println("skip (нет server_scripts/): " + root);
 				continue;
 			}
@@ -78,14 +88,23 @@ class Run {
 
 	static var failures:Int = 0;
 
-	static function walk(root:String, dir:String, rel:String, libMode:Bool, sourceCp:Null<String>):Int {
+	/** ServerLogic-наследник (прямой или через Sync с @:rpc). */
+	static final syncRe = ~/extends\s+[\w.]*\bSync\b/;
+
+	static function isScript(content:String):Bool
+		return content.indexOf("ServerLogic") >= 0 || syncRe.match(content);
+
+	static function walk(root:String, dir:String, rel:String, libMode:Bool, sourceCp:Null<String>):Int
+	{
 		var built = 0;
 
-		for (entry in FileSystem.readDirectory(dir)) {
+		for (entry in FileSystem.readDirectory(dir))
+		{
 			final path = dir + "/" + entry;
 			final relPath = rel == "" ? entry : rel + "/" + entry;
 
-			if (FileSystem.isDirectory(path)) {
+			if (FileSystem.isDirectory(path))
+			{
 				built += walk(root, path, relPath, libMode, sourceCp);
 				continue;
 			}
@@ -93,9 +112,9 @@ class Run {
 			if (!StringTools.endsWith(entry, ".hx"))
 				continue;
 
-			// каждый ServerLogic-наследник на любой глубине — отдельный чанк
+			// каждый ServerLogic/Sync-наследник на любой глубине — отдельный чанк
 			final cls = entry.substring(0, entry.length - 3);
-			if (File.getContent(path).indexOf("ServerLogic") < 0)
+			if (!isScript(File.getContent(path)))
 				continue;
 
 			final outDirParts = rel == "" ? [] : rel.split("/");
@@ -106,12 +125,25 @@ class Run {
 			final out = outDir + "/" + cls + ".lua";
 
 			var haxeArgs:Array<String> = [];
-			if (libMode) {
+			if (libMode)
+			{
 				haxeArgs = haxeArgs.concat(["-lib", "gamessa"]);
-			} else if (sourceCp != null) {
+			} else if (sourceCp != null)
+			{
 				haxeArgs = haxeArgs.concat(["-cp", sourceCp]);
 			}
-			haxeArgs = haxeArgs.concat(["-cp", dir, "-main", cls, "-D", "lua-ver=5.3", "-lua", out]);
+			haxeArgs = haxeArgs.concat([
+				"-cp",
+				dir,
+				"-main",
+				cls,
+				"-D",
+				"lua-ver=5.3",
+				"-D",
+				"gamessa-server", // серверная половина @:rpc (Sync)
+				"-lua",
+				out,
+			]);
 
 			Sys.println("build " + relPath + " -> " + out.substring(root.length + 1));
 			if (Sys.command("haxe", haxeArgs) == 0)
@@ -123,7 +155,8 @@ class Run {
 		return built;
 	}
 
-	static function haxeHasGamessa():Bool {
+	static function haxeHasGamessa():Bool
+	{
 		final p = try new sys.io.Process("haxelib", ["path", "gamessa"]) catch (_:Dynamic) return false;
 		final out = p.stdout.readAll().toString();
 		final code = p.exitCode();
@@ -132,17 +165,20 @@ class Run {
 	}
 
 	/** Путь к каталогу source SDK: findUp → GAMESSA_SDK (fallback без haxelib). */
-	static function findSource(haxelibDir:Null<String>):Null<String> {
+	static function findSource(haxelibDir:Null<String>):Null<String>
+	{
 		final marker = "gamessa/script/ServerLogic.hx";
 
-		if (haxelibDir != null) {
+		if (haxelibDir != null)
+		{
 			final p = haxelibDir + "/source";
 			if (FileSystem.exists(p + "/" + marker))
 				return p;
 		}
 
 		var dir = Sys.getCwd();
-		while (true) {
+		while (true)
+		{
 			final p = dir + "/sdk/gamessa/source";
 			if (FileSystem.exists(p + "/" + marker))
 				return p;

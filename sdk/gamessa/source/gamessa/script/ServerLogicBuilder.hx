@@ -39,16 +39,11 @@ class ServerLogicBuilder
 		final fields = Context.getBuildFields();
 		final lua = Context.defined("lua");
 
-		final stateType:Null<Type> = try
-		{
-			final sup = cls.superClass;
-			final supType = sup.t.get();
-			if (supType.pack.join(".") == "gamessa.script" && supType.name == "ServerLogic" && sup.params.length > 0)
-				sup.params[0]
-			else
-				null;
-		} catch (_:Dynamic)
-			null;
+		final stateType:Null<Type> = serverLogicStateType(cls);
+		// абстрактный уровень цепочки (сам Sync<TState>): конкретный документ
+		// неизвестен — Lua-машинерию (main/биндинг) не генерируем, он и не
+		// точка входа; __lower/__stateLua безвредны и остаются
+		final concrete = stateType != null && !isTypeParam(stateType);
 
 		final classRef = cls.pack.length == 0 ? cls.name : "__" + cls.pack.join("_") + "_" + cls.name;
 
@@ -63,7 +58,7 @@ class ServerLogicBuilder
 				public static var __stateLua(default, null):String = $v{stateLua};
 			}).fields[0]);
 
-		if (lua)
+		if (lua && concrete)
 		{
 			cls.meta.add(":keep", [], cls.pos);
 
@@ -74,14 +69,20 @@ class ServerLogicBuilder
 				}).fields[0]);
 
 			// __callWire — реальный Haxe-код (DCE его сохранит): здесь живут
-			// ссылки на ScriptFn.fromWire и __lower, которые иначе вырезались бы,
-			// т.к. упоминаются только в __lua__-строке биндинга
-			final stateCt = stateType == null ? (macro :Dynamic) : TypeTools.toComplexType(stateType);
+			// ссылки на ScriptWire.fromWire/__lower/reply, которые иначе
+			// вырезались бы, т.к. упоминаются только в __lua__-строке биндинга.
+			// Request-вызов идёт в reply(): возвращается само ЗНАЧЕНИЕ-ОТВЕТ
+			// (мост в этом потоке не применяет эффекты, а отвечает клиенту);
+			// null — «обработчика нет».
+			final stateCt = TypeTools.toComplexType(stateType);
 			fields.push((macro class
 				{
-					static function __callWire(fn:String, a:Dynamic, s:$stateCt):Array<Dynamic>
+					static function __callWire(fn:String, a:Dynamic, s:$stateCt):Dynamic
 					{
-						return __lower(__inst.call(gamessa.script.ScriptWire.fromWire(fn, a), s));
+						final wire:gamessa.script.ScriptFn = gamessa.script.ScriptWire.fromWire(fn, a);
+						if (gamessa.script.ScriptWire.isRequest(wire))
+							return __inst.reply(wire, s);
+						return __lower(__inst.call(wire, s));
 					}
 				}).fields[0]);
 
@@ -108,6 +109,72 @@ class ServerLogicBuilder
 
 		return fields;
 	}
+
+	/**
+		Тип состояния ServerLogic<TState> для класса `cls` с подъёмом по
+		всей цепочке наследования и подстановкой параметров: у
+		промежуточных классов (`class Sync<T> extends ServerLogic<T>`,
+		`class ChatSync extends Sync<ChatState>`) прямой родитель — не
+		ServerLogic, а его формальный параметр надо разрешить через
+		аргумент, с которым он инстанцирован у наследника.
+	**/
+	static function serverLogicStateType(root:ClassType):Null<Type>
+	{
+		var cls = root;
+		// привязки формальных параметров текущего уровня (root — конкретный)
+		var subst:Map<String, Type> = new Map();
+
+		while (cls != null)
+		{
+			final sup = cls.superClass;
+			if (sup == null)
+				return null;
+			final supCls = sup.t.get();
+
+			final resolved = [for (t in sup.params) substParam(t, subst)];
+
+			if (supCls.pack.join(".") == "gamessa.script" && supCls.name == "ServerLogic")
+				return resolved[0];
+
+			// следующий уровень: его параметры связаны аргументами этого
+			subst = new Map();
+			for (i in 0...supCls.params.length)
+				if (i < resolved.length)
+					subst.set(supCls.params[i].name, resolved[i]);
+
+			cls = supCls;
+		}
+
+		return null;
+	}
+
+	// формальный параметр в позиции Type — TInst класса с kind KTypeParameter
+	static function isTypeParamClass(ct:ClassType):Bool
+		return switch (ct.kind)
+		{
+			case KTypeParameter(_): true;
+			case _: false;
+		}
+
+	static function substParam(t:Type, subst:Map<String, Type>):Type
+	{
+		final t = TypeTools.follow(t, true);
+		return switch (t)
+		{
+			case TInst(t, _) if (isTypeParamClass(t.get()) && subst.exists(t.get().name)):
+				subst.get(t.get().name);
+
+			case _:
+				t;
+		}
+	}
+
+	static function isTypeParam(t:Type):Bool
+		return switch (TypeTools.follow(t, true))
+		{
+			case TInst(t, _): isTypeParamClass(t.get());
+			case _: false;
+		}
 
 	// -------------------------------------------------------------------
 

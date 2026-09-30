@@ -13,31 +13,42 @@ import haxe.ds.StringMap;
 	Запуск (сервер должен быть поднят, например `PORT=4100 mix phx.server`
 	в корне репозитория):
 
-	    haxe example.hxml -hl bin/example.hl   && hl bin/example.hl
-	    haxe example.hxml -neko bin/example.n  && neko bin/example.n
+		haxe example.hxml -hl bin/example.hl   && hl bin/example.hl
+		haxe example.hxml -neko bin/example.n  && neko bin/example.n
 
 	Эндпоинт — первым аргументом (https/wss работают сами: схема выводится
-	из эндпоинта). Проверка сертификата на локальном https-стенде
-	(localhost/127.0.0.1, самоподписанный `mix phx.gen.cert`) по умолчанию
-	отключена — демо об этом пишет trace'ом. Явно:
+	из эндпоинта). Второй аргумент `sync_chat` — демо типизированных
+	@:rpc-стабов (ChatSync; см. doc/LUA_SCRIPTING.md, «Sync»). Проверка
+	сертификата на локальном https-стенде (localhost/127.0.0.1,
+	самоподписанный `mix phx.gen.cert`) по умолчанию отключена — демо об
+	этом пишет trace'ом. Явно:
 
-	    hl bin/example.hl http://127.0.0.1:4100              # без TLS
-	    hl bin/example.hl https://127.0.0.1:4001             # самоподписанный стенд
-	    hl bin/example.hl https://my.host --verify-cert      # доверенный CA
-	    hl bin/example.hl https://127.0.0.1:4001 --insecure  # как дефолт, явно
+		hl bin/example.hl http://127.0.0.1:4100              # без TLS
+		hl bin/example.hl https://127.0.0.1:4001             # самоподписанный стенд
+		hl bin/example.hl https://my.host --verify-cert      # доверенный CA
+		hl bin/example.hl https://127.0.0.1:4001 --insecure  # как дефолт, явно
+		hl bin/example.hl <endpoint> sync_chat               # Sync-демо
 
 	Интерактив: `<текст>` — сказать в канал, `/quit` — выйти.
-*/
-class Main {
+ */
+class Main
+{
 	static final DEFAULT_ENDPOINT = "https://127.0.0.1:4001";
 
-	static function main() {
+	/** Тип комнаты демо ("chat" | "sync_chat"); второй аргумент CLI. */
+	static var roomType = "chat";
+
+	static function main()
+	{
 		#if (js && !nodejs)
 		// браузер проверяет сертификат сам (доверие импортируется вручную)
 		start(DEFAULT_ENDPOINT, true);
 		#else
 		var args = Sys.args();
 		var endpoint = args.length > 0 ? args[0] : DEFAULT_ENDPOINT;
+		// второй аргумент — тип комнаты; "sync_chat" ведёт демо типизированных
+		// @:rpc-стабов (ChatSync), по умолчанию — обычный чат
+		roomType = args.length > 1 && args[1] == "sync_chat" ? "sync_chat" : "chat";
 
 		var verifyCert:Null<Bool> = null;
 		if (args.indexOf("--insecure") >= 0)
@@ -64,7 +75,8 @@ class Main {
 	}
 
 	/** Локальный https = самоподписанный dev-стенд (`mix phx.gen.cert`). */
-	static function isLocalHttps(endpoint:String):Bool {
+	static function isLocalHttps(endpoint:String):Bool
+	{
 		var e = endpoint.toLowerCase();
 		if (!StringTools.startsWith(e, "https://"))
 			return false;
@@ -72,11 +84,13 @@ class Main {
 		return host == "localhost" || host == "127.0.0.1" || host == "::1";
 	}
 
-	static function start(endpoint:String, verifyCert:Bool):Void {
+	static function start(endpoint:String, verifyCert:Bool):Void
+	{
 		#if sys
 		var pending:Array<Void->Void> = [];
 		var lock = new sys.thread.Mutex();
-		Dispatcher.post = f -> {
+		Dispatcher.post = f ->
+		{
 			lock.acquire();
 			pending.push(f);
 			lock.release();
@@ -87,16 +101,25 @@ class Main {
 		var username = "haxe_" + Std.int(Math.random() * 100000);
 		var password = "secret123";
 		var client = new Client(endpoint, null, null, verifyCert);
-		trace('gamessa chat demo → $endpoint (user: $username)' + (verifyCert ? "" : " [verifyCert=false: проверка сертификата отключена]"));
+		trace('gamessa chat demo → $endpoint (user: $username)'
+			+ (verifyCert ? "" : " [verifyCert=false: проверка сертификата отключена]"));
 
-		client.register(username, password, auth -> {
+		client.register(username, password, auth ->
+		{
 			trace("registered, token received");
-			client.joinOrCreate("chat", {channel: "global"}, res -> runChat(client, res), fail);
+			client.joinOrCreate(roomType, {channel: "global"}, res ->
+			{
+				if (roomType == "sync_chat")
+					runSyncChat(client, res);
+				else
+					runChat(client, res);
+			}, fail);
 		}, fail);
 	}
 
 	#if sys
-	static function pump(pending:Array<Void->Void>, lock:sys.thread.Mutex):Void {
+	static function pump(pending:Array<Void->Void>, lock:sys.thread.Mutex):Void
+	{
 		var batch:Array<Void->Void>;
 		lock.acquire();
 		batch = pending.splice(0, pending.length);
@@ -107,17 +130,72 @@ class Main {
 	}
 	#end
 
-	static function runChat(client:Client, reservation:SeatReservation):Void {
+	/**
+		Sync-демо: та же машинерия сообщений, но вызовы идут через
+		типизированные @:rpc-стабы (say → room.send, seq → room.request
+		со значением-ответом в колбэке). Комната "sync_chat".
+	 */
+	static function runSyncChat(client:Client, reservation:SeatReservation):Void
+	{
+		var room = client.connectRoom(reservation);
+		var chat = new ChatSync();
+		chat.bind(room);
+
+		room.onJoin.add(e ->
+		{
+			trace('joined sync room ${room.roomId} as ${room.sessionId}');
+			chat.say("hello via typed stub!"); // → room.send("say", {text: …})
+			chat.seq(v -> trace('server seq = $v')); // → room.request("seq", …)
+		});
+
+		room.onMessage.add(e ->
+		{
+			switch (e.type)
+			{
+				case "say":
+					var m:StringMap<Dynamic> = e.message;
+					trace('<${m.get("name")}> ${m.get("text")}');
+				case "joined":
+					var m:StringMap<Dynamic> = e.message;
+					trace('* ${m.get("name")} joined (v=${m.get("v")})');
+				case "left":
+					var m:StringMap<Dynamic> = e.message;
+					trace('* ${m.get("sid")} left');
+				case _:
+					// прочие типы игнорируем
+			}
+		});
+
+		room.onError.add(e -> trace('room error ${e.code}: ${e.message}'));
+		room.onDrop.add(_ -> trace("connection lost, reconnecting..."));
+		room.onLeave.add(e ->
+		{
+			trace('left the room (${e.code} ${e.reason})');
+			#if sys
+			Sys.exit(0);
+			#end
+		});
+
+		#if !js
+		sys.thread.Thread.create(() -> interactiveLoop(room));
+		#end
+	}
+
+	static function runChat(client:Client, reservation:SeatReservation):Void
+	{
 		var room = client.connectRoom(reservation);
 
-		room.onJoin.add(e -> {
+		room.onJoin.add(e ->
+		{
 			trace('joined room ${room.roomId} as ${room.sessionId}');
 			trace('reconnection token: ${room.reconnectionToken}');
 			room.send("say", {text: "hello from gamessa!"});
 		});
 
-		room.onMessage.add(e -> {
-			switch (e.type) {
+		room.onMessage.add(e ->
+		{
+			switch (e.type)
+			{
 				case "say":
 					var m:StringMap<Dynamic> = e.message;
 					var who:Dynamic = m.get("username");
@@ -137,7 +215,8 @@ class Main {
 
 		room.onError.add(e -> trace('room error ${e.code}: ${e.message}'));
 		room.onDrop.add(_ -> trace("connection lost, reconnecting..."));
-		room.onLeave.add(e -> {
+		room.onLeave.add(e ->
+		{
 			trace('left the room (${e.code} ${e.reason})');
 			#if sys
 			Sys.exit(0);
@@ -152,15 +231,18 @@ class Main {
 	}
 
 	#if !js
-	static function interactiveLoop(room:Room<Dynamic>):Void {
+	static function interactiveLoop(room:Room<Dynamic>):Void
+	{
 		setupConsoleInput();
 		var stdin = Sys.stdin();
 		Sys.println('type a message and press Enter ("/quit" to leave):');
 
-		while (true) {
+		while (true)
+		{
 			var line = stdin.readLine();
 			var text = StringTools.trim(line);
-			if (text == "/quit") {
+			if (text == "/quit")
+			{
 				// leave тоже через Dispatcher — без записи в сокет из двух потоков
 				Dispatcher.post(() -> room.leave());
 				return;
@@ -175,15 +257,17 @@ class Main {
 		декодирует ввод как UTF-8: кириллица превращается в пустую строку и
 		сообщение молча не отправляется (латиница не страдает — она однобайтовая
 		и в любой странице). Переключаем кодовую страницу консоли на UTF-8.
-	*/
-	static function setupConsoleInput():Void {
+	 */
+	static function setupConsoleInput():Void
+	{
 		#if ((hl || cpp || neko) && windows)
 		Sys.command("chcp", ["65001"]);
 		#end
 	}
 	#end
 
-	static function fail(err:MatchMakeError):Void {
+	static function fail(err:MatchMakeError):Void
+	{
 		trace('ERROR ${err.code}: ${err.message}');
 		#if sys
 		Sys.exit(1);

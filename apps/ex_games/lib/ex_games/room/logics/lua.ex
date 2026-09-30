@@ -47,6 +47,13 @@ defmodule ExGames.Room.Logics.Lua do
       { "lock" }  { "unlock" }
       { "set_metadata", map }
 
+  Особый поток `fn == "request"`: скрипту приходит request-вызов
+  (`[type, sid, payload]`), а первое значение пары — **значение-ответ**
+  (не эффекты), оно уходит запросившему клиенту кадром RoomResponse;
+  null = «обработчика нет» — клиент получает ошибку. Haxe-скрипты
+  (`ServerLogic.reply`, наследники `Sync` с @:rpc) получают эту
+  развёртку автоматически.
+
   Новый state публикуется через `set_state/2` (delta-синк работает как есть)
   только при изменении. Ошибка скрипта → телеметрия + игнор (комнату не
   роняем). Мост дополнительно отвечает на request `"schema"` документом
@@ -85,6 +92,33 @@ defmodule ExGames.Room.Logics.Lua do
     case run(state, room, "message", [type, client.session_id, payload]) do
       {:ok, slice} -> {:ok, slice}
       :error -> {:ok, state}
+    end
+  end
+
+  # Request-поток: первое значение пары — значение-ответ (НЕ эффекты),
+  # состояние публикуется как обычно. nil/ошибка скрипта — ошибка-реплай
+  # (клиент мгновенно отклоняет ожидающий запрос).
+  @doc false
+  def base_logic_request(room, client, type, payload, state) do
+    case LogicServer.call(state.id, "request", [type, client.session_id, payload]) do
+      # reply вернул null — у скрипта нет обработчика
+      {:ok, nil} ->
+        {:error, "unknown request", state}
+
+      {:ok, result} ->
+        case LogicServer.state(state.id) do
+          {:ok, new_state} ->
+            {:ok, slice} = publish_and_apply(state, room, nil, new_state)
+            {:reply, result, slice}
+
+          {:error, reason} ->
+            log_lua_error(state, "request", reason)
+            {:error, "request failed", state}
+        end
+
+      {:error, reason} ->
+        log_lua_error(state, "request", reason)
+        {:error, "request failed", state}
     end
   end
 
@@ -134,6 +168,12 @@ defmodule ExGames.Room.Logics.Lua do
     end
   end
 
+  # Остальные request'ы — в скрипт: M.call("request", [type, sid, payload])
+  # возвращает {значение-ответ, state}; null = «обработчика нет».
+  request :_, payload, room, client, state do
+    base_logic_request(room, client, type, payload, state)
+  end
+
   # -------------------------------------------------------------------------
   # Базовые реализации для тонких модулей (use ExGames.Room.Logics.Lua)
   # -------------------------------------------------------------------------
@@ -180,6 +220,16 @@ defmodule ExGames.Room.Logics.Lua do
 
       message(:_, unquote(payload), unquote(room), unquote(client), unquote(state)) do
         ExGames.Room.Logics.Lua.base_logic_message(
+          unquote(room),
+          unquote(client),
+          unquote(type),
+          unquote(payload),
+          unquote(state)
+        )
+      end
+
+      request(:_, unquote(payload), unquote(room), unquote(client), unquote(state)) do
+        ExGames.Room.Logics.Lua.base_logic_request(
           unquote(room),
           unquote(client),
           unquote(type),

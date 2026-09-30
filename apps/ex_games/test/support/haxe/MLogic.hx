@@ -25,12 +25,15 @@ class MLogic {
 		return { count: 0, joins: {} };
 	}
 
-	// fn: "join" | "leave" | "message". ГРАБЛЯ: host-массивы из Elixir-документов —
-	// plain-таблицы 1-based; типизируем args как Dynamic и индексируем с 1
-	// (тип Array<Dynamic> дал бы сырые 0-based индексы Haxe-хранилища).
+	// fn: "join" | "leave" | "message" | "request". ГРАБЛЯ: host-массивы из
+	// Elixir-документов — plain-таблицы 1-based; типизируем args как Dynamic
+	// и индексируем с 1 (тип Array<Dynamic> дал бы сырые 0-based индексы
+	// Haxe-хранилища).
 	//   join    -> [sid, auth]
 	//   message -> [type, sid, payload]
-	public static function call(fn:String, args:Dynamic, state:Dynamic):Array<Dynamic> {
+	//   request -> [type, sid, payload]; возврат — значение-ответ (НЕ массив
+	//     эффектов): мост отдаёт его запросившему; null = «нет обработчика».
+	public static function call(fn:String, args:Dynamic, state:Dynamic):Dynamic {
 		if (fn == "join") {
 			final sid:String = args[1];
 			Reflect.setField(state.joins, sid, true);
@@ -40,6 +43,14 @@ class MLogic {
 			final payload:Dynamic = args[3];
 			state.count = state.count + payload.n;
 			return [["broadcast", "added", {total: state.count}]];
+		}
+		if (fn == "request") {
+			if (args[1] == "echo") {
+				final payload:Dynamic = args[3];
+				final n:Int = payload.n;
+				return {to: args[2], doubled: n * 2};
+			}
+			return null;
 		}
 		return null;
 	}

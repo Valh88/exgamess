@@ -253,6 +253,56 @@ JSON-схема для Haxe-скриптов не нужна. Вызовы уж�
 payload)); позиционная магия (`ScriptArgs.get(i)`, 1-based) осталась
 только в сыром пути без SDK.
 
+## Sync — типизированные @:rpc поверх ServerLogic
+
+`gamessa.script.Sync<TState>` — наследник `ServerLogic`, где методы
+комнаты объявляются атрибутом `@:rpc`, а класс общий для сервера и
+клиента:
+
+```haxe
+class ChatSync extends gamessa.script.Sync<SyncState> {
+  // send-метод: возврат Void | Array<Effect> → путь call (кадр ROOM_DATA)
+  @:rpc public function say(text:String):Array<Effect> {
+    state.seq = state.seq + 1;
+    return [Broadcast("say", {n: state.seq, sid: caller, text: text})];
+  }
+
+  // request-метод: любой другой возврат → путь reply (ROOM_REQUEST →
+  // RoomResponse со значением); null = «нет обработчика» — клиенту ошибка
+  @:rpc public function seq():Int
+    return state.seq;
+
+  override function onJoin(sid:String, auth:Dynamic):Array<Effect> { ... }
+  override function onLeave(sid:String, reason:String):Array<Effect> { ... }
+}
+```
+
+Один и тот же класс компилируется в обе стороны:
+
+* **сервер** (`-D gamessa-server` ставят оба раннера) — `SyncBuilder`
+  генерирует `messages()` из имён @:rpc (M.schema.messages), диспетчеры
+  `call`/`reply` (декод аргументов из payload по именам полей, в теле
+  доступны `state` и `caller` — session_id вызвавшего) и стабы-делегации
+  в `__im_<имя>` (локальный вызов одного @:rpc из другого);
+* **клиент** (js/hl/neko, без define) — те же имена становятся
+  типизированными стабами: `chat.say("hi")` → `room.send("say", …)`,
+  `chat.seq(v -> trace(v))` → `room.request("seq", …)` со значением в
+  колбэке. Состояние типизируется тем же typedef'ом (`Room<SyncState>`).
+
+  var chat = new ChatSync();
+  chat.bind(room);
+  chat.say("привет");
+  chat.seq(v -> trace("seq = " + v));
+
+Ограничения @:rpc: public, не static, без optional-аргументов, с явным
+типом возврата. `request "schema"` мост обрабатывает сам (раньше
+wildcard-клейзы). Чистым Lua-скриптам request-поток тоже доступен:
+`M.call("request", [type, sid, payload], state)` возвращает
+`{значение-ответ, state}` (nil = нет обработчика) — эффекты в этом
+потоке не применяются. Серверные `ServerLogic`-скрипты (не Sync) могут
+переопределить `reply(fn, state):Dynamic` — базовый `null` даёт
+«нет обработчика».
+
 ## Пример: Haxe-чат (arena_example, тип комнаты `haxe_chat`)
 
 Рабочий образец «создание скрипта → комната → обновление логики» на
@@ -276,6 +326,23 @@ Workflow обновления логики: правка `ChatHx.hx` → `gamess
 старой VM (перезапуск — dispose через админку `/admin/rooms` или
 `Rooms.stop/1`). Версия логики видна клиентам в payload `"joined"` (`v`).
 Схема (`ChatHx.schema.json`) освежается той же `mix ex_games.scripts`.
+
+## Пример: Sync-чат (arena_example, тип комнаты `sync_chat`)
+
+Рабочий образец `Sync`/@:rpc — чат, где `say` — send-метод, а `seq` и
+`history` — request-методы (ответ значением):
+
+* `apps/arena_example/server_scripts/chatsync/ChatSync.hx` — класс
+  `Sync<SyncState>` (@:rpc say/seq/history + onJoin/onLeave); сборка —
+  `mix ex_games.scripts` → `priv/lua/chatsync/ChatSync.lua`;
+* `SyncChatRoom` — оболочка (`lua_script` + `lua_haxe: true`), boot
+  регистрирует `"sync_chat"`;
+* `sdk/gamessa/example/ChatSync.hx` — клиентское зеркало того же класса:
+  `hl bin/example.hl <endpoint> sync_chat` — демо стабов
+  (`chat.say(...)`, `chat.seq(v -> ...)`);
+* интеграционный тест `sync_chat_integration_test.exs` — join (`v=2`),
+  say обоим, `seq`/`history` кадром RoomResponse, schema с именами
+  @:rpc, неизвестный запрос — ошибка с request_id, `left` при уходе.
 
 ## Ветки состояния мульти-Lua (state_key)
 
@@ -301,14 +368,15 @@ end
 сервера** (это его бизнес-логика; SDK — только библиотека каркаса):
 
     <root>/server_scripts/**/Xxx.hx        — РЕКУРСИВНО: каждый .hx (любая
-        глубина), наследующий ServerLogic, — отдельный скрипт
+        глубина), наследующий ServerLogic или Sync (@:rpc), — отдельный
+        скрипт
     <root>/priv/lua/<путь>/Xxx.lua         — чанк (ЗЕРКАЛО дерева server_scripts;
         путь — для lua_script: моста)
     <root>/priv/lua/<путь>/Xxx.lua.schema.json — схема (сервер-раннер)
 
-Никаких script.json: раннер сам находит ServerLogic-наследников. Общие
-исходники (.hx без ServerLogic в том же каталоге) подхватываются через
--cp и отдельно не собираются.
+Никаких script.json: раннер сам находит наследников (ServerLogic/Sync)
+и собирает с `-D gamessa-server`. Общие исходники (.hx без них в том же
+каталоге) подхватываются через -cp и отдельно не собираются.
 
 Два входа в один и тот же результат:
 

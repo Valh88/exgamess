@@ -1488,7 +1488,10 @@ defmodule ExGames.Room.Server do
   defp logic_for_request(%__MODULE__{} = state, type) do
     Enum.find(state.logics, fn {mod, _} ->
       function_exported?(mod, :__request_types__, 0) and type in mod.__request_types__()
-    end)
+    end) ||
+      Enum.find(state.logics, fn {mod, _} ->
+        function_exported?(mod, :__request_wildcard__, 0) and mod.__request_wildcard__() == true
+      end)
   end
 
   defp run_logic_join(%__MODULE__{} = state, client, auth) do

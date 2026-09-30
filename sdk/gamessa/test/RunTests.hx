@@ -15,6 +15,7 @@ class RunTests {
 		runner.addCase(new gamessa.tests.LatencyTransportTest());
 		runner.addCase(new gamessa.tests.SchemaTest());
 		runner.addCase(new gamessa.tests.ServerLogicTest());
+		runner.addCase(new gamessa.tests.SyncTest());
 
 		runner.onProgress.add(p -> {
 			for (a in p.result.assertations) {

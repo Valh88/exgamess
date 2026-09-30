@@ -1,0 +1,10 @@
+# Compile-проверка клиентской половины Sync (@:rpc-стабы без
+# -D gamessa-server). Запуск: haxe test_client.hxml
+# SyncTest прогоняется и тут: серверные стабы исключены условной
+# компиляцией, диспетчеры и компиляция клиентских стабов проверяются.
+-cp source
+-cp test
+-main RunTests
+-lib utest
+-lib hxWebSockets
+--interp
