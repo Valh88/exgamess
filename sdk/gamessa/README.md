@@ -99,8 +99,8 @@ compile-time, сервер структуру не валидирует.
 Свойства reconnect: `reconnectDelayMs` (100), `reconnectMaxDelayMs` (5000),
 `maxRetries` (15) — экспоненциальный backoff **после обрыва** (сам по себе
 reconnect не периодический); после исчерпания — `onLeave` с кодом 4003.
-Токен ротируется сервером при каждом переподключении (как в Colyseus) и
-обновляется в `room.reconnectionToken`.
+Токен ротируется сервером при каждом переподключении и обновляется в
+`room.reconnectionToken`.
 
 Keepalive: `keepAliveMs` (25с, 0 — выключить). Сервер закрывает WS, если от
 клиента нет данных 60с (`timeout` в `WsController`), поэтому SDK сама шлёт
@@ -161,6 +161,43 @@ client.joinOrCreate("queue", {}, res -> {
 Ранг берётся **с сервера** (рейтинги Elo аккаунтов, ключ `game` — тип
 матч-комнаты; стартовый — 1000). Клиентский `"rank"` в опциях применяется
 только если серверный источник рангов не настроен (`:rank_source`).
+
+### `gamessa.script.Sync` — типизированные @:rpc (общий класс клиента и сервера)
+
+`Sync<TState>` — наследник серверного `ServerLogic` (см.
+`doc/LUA_SCRIPTING.md`, «Sync»), где методы комнаты объявляются
+атрибутом `@:rpc`. Один и тот же класс компилируется и в Lua-чанк
+сервера (`-D gamessa-server`, тела выполняются), и в клиентскую
+сборку — где имена становятся типизированными стабами:
+
+```haxe
+class ChatSync extends gamessa.script.Sync<ChatState> {
+  // клиент → сервер, fire-and-forget (возврат Void | Array<Effect>)
+  @:rpc public function say(text:String):Array<Effect> { ... }
+
+  // клиент → сервер, ответ значением (любой иной возврат)
+  @:rpc public function seq():Int { ... }
+
+  // сервер → клиенты, типизированное событие (только Void; тело
+  // исполняется на клиенте при кадре "userCount")
+  @:rpc(clients) public function userCount(count:Int):Void { ... }
+}
+
+var chat = new ChatSync();
+chat.bind(room);          // стабы шлют через room; state ← снапшоты
+chat.say("привет");       // → room.send("say", …)
+chat.seq(v -> trace(v));  // → room.request("seq", …)
+```
+
+Направление задаёт режим атрибута: `@:rpc` / `@:rpc(server)` — клиент
+→ сервер (умолчание), `@:rpc(clients)` — сервер → клиенты. На сервере
+в теле доступны `state` (документ состояния) и `caller` (session_id
+вызвавшего); серверные хуки `onJoin(sid, auth)` / `onLeave(sid,
+reason)` возвращают эффекты. Ограничения: public, не static, без
+optional-аргументов, с явным типом возврата; один режим на метод;
+иные режимы — ошибка компиляции. `bind()` синхронизирует `state` со
+снапшотами (`onStateChange`) и подписывает клиент на события
+`@:rpc(clients)`.
 
 ## Потоки и Dispatcher
 

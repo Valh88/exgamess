@@ -295,7 +295,10 @@ class ChatSync extends gamessa.script.Sync<SyncState> {
   chat.seq(v -> trace("seq = " + v));
 
 Ограничения @:rpc: public, не static, без optional-аргументов, с явным
-типом возврата. `request "schema"` мост обрабатывает сам (раньше
+типом возврата; один режим на метод — `@:rpc` / `@:rpc(server)`
+(клиент → сервер, умолчание) или `@:rpc(clients)` (сервер → клиенты,
+см. ниже); любой иной параметр (`all`, `owner`, опечатка) — ошибка
+компиляции. `request "schema"` мост обрабатывает сам (раньше
 wildcard-клейзы). Чистым Lua-скриптам request-поток тоже доступен:
 `M.call("request", [type, sid, payload], state)` возвращает
 `{значение-ответ, state}` (nil = нет обработчика) — эффекты в этом
