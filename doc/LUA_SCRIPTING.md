@@ -232,36 +232,15 @@ class ChatHx extends gamessa.script.ServerLogic<ChatState> {
 
 Билдер (`@:autoBuild`) генерирует в наследника: Lua-биндинг M с
 `__hx_toplain` на границах (только под `-lua`, `@:keep` включён),
-`M.schema.state` из typedef'а, `__lower` — понижение `Array<Effect>`
-в сырые массивы контракта. На hl/js класс — обычный Haxe: **клиентское
+`M.schema.state` из typedef-а, `__lower` — понижение `Array<Effect>`
+в сырые массивы контракта, `ScriptWire.fromWire` — развёртку wire-вызова
+в `ScriptFn`. На hl/js класс — обычный Haxe: **клиентское
 переиспользование** — те же init/call/tick вызываются напрямую над копией
-стейта (предикт), `Room<ChatState>` типизируется тем же typedef'ом —
-JSON-схема для Haxe-скриптов не нужна. `ScriptArgs.get(i)` — 1-based
-доступ (join: [sid, auth]; message: [type, sid, payload]);
-`ScriptArgs.ofArray/1` — фабрика для клиента.
-
-Грабли, найденные при реализации (все покрыты тестами):
-
-* **индексация**: Haxe хранит свои массивы 0-based (`[0]=…` + поле
-  `length`), host-таблицы из Elixir-документов — 1-based plain;
-  аргументы моста типизировать Dynamic и индексировать с 1,
-  `.length` на них не читать;
-* **служебные ключи**: Haxe-объекты несут маркер `__fields__` — границы
-  нормализует `__hx_toplain` (в биндинге билдера; в сыром скрипте — руками);
-* **удаление ключа** — только `Reflect.setField(t, k, null)` (инлайнится в
-  `rawset`); `Reflect.deleteField` на plain-таблицах падает — пишет
-  `o.__fields__[k]` без защиты (рассчитано на Haxe-объекты);
-* **String в macro API** — TInst (класс), Int/Float/Bool — TAbstract;
-* **имена таблиц**: класс без пакета — локальная `ChatHx`; упакованные —
-  глобальные `__<package>_<Class>`;
-* **DCE**: `@:keep` на классе — функции, на которые ссылается только
-  `__lua__`-строка, вырезаются;
-* `Std.string(float)` под BEAM даёт `"3.0"`, под Haxe — `"3"`.
-
-Сырой путь без SDK (контракт M руками) — образец
-`apps/ex_games/test/support/haxe/MLogic.hx`; Haxe-типы — compile-time
-дисциплина, рантайм-валидация wire-входа — отдельная история (валидация
-set_state по схеме).
+стейта (предикт), `Room<ChatState>` типизируется тем же typedef-ом —
+JSON-схема для Haxe-скриптов не нужна. Вызовы уже типизированы:
+`ScriptFn` (Join(sid, auth) / Leave(sid, reason) / Message(type, sid,
+payload)); позиционная магия (`ScriptArgs.get(i)`, 1-based) осталась
+только в сыром пути без SDK.
 
 ## Пример: Haxe-чат (arena_example, тип комнаты `haxe_chat`)
 

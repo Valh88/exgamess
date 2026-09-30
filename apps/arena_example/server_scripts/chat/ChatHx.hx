@@ -1,7 +1,7 @@
 package;
 
 import gamessa.script.Effect;
-import gamessa.script.ScriptArgs;
+import gamessa.script.ScriptFn;
 
 /**
 	Чат на Haxe через gamessa.script.ServerLogic (пример арены, тип комнаты
@@ -36,32 +36,23 @@ class ChatHx extends gamessa.script.ServerLogic<ChatState> {
 	override function init(_args:Dynamic):ChatState
 		return {seq: 0, version: VERSION, users: {}, history: {}};
 
-	// join    -> args: [sid, auth]
-	// message -> args: [type, sid, payload]
-	override function call(fn:String, args:ScriptArgs, state:ChatState):Array<Effect> {
-		if (fn == "join") {
-			final sid:String = args.get(1);
-			final auth:Dynamic = args.get(2);
-			final name:String = usernameOf(auth);
-			Reflect.setField(state.users, sid, name);
-			return [Broadcast("joined", {sid: sid, name: name, v: VERSION})];
-		}
+	// вызов уже типизирован: switch по ScriptFn с разбором аргументов
+	override function call(fn:ScriptFn, state:ChatState):Array<Effect> {
+		switch (fn) {
+			case Join(sid, auth):
+				final name = usernameOf(auth);
+				Reflect.setField(state.users, sid, name);
+				return [Broadcast("joined", {sid: sid, name: name, v: VERSION})];
 
-		if (fn == "leave") {
-			final sid:String = args.get(1);
-			// deleteField на plain-таблицах падает — setField(null) = rawset(nil)
-			Reflect.setField(state.users, sid, null);
-			return [Broadcast("left", {sid: sid})];
-		}
+			case Leave(sid, _):
+				// deleteField на plain-таблицах падает — setField(null) = rawset(nil)
+				Reflect.setField(state.users, sid, null);
+				return [Broadcast("left", {sid: sid})];
 
-		if (fn == "message") {
-			final sid:String = args.get(2);
-			final payload:Dynamic = args.get(3);
-
-			if (args.get(1) == "say") {
+			case Message("say", sid, payload):
 				state.seq = state.seq + 1;
 				final n:Int = state.seq;
-				final name:String = usernameOf(Reflect.field(state.users, sid));
+				final name = usernameOf(Reflect.field(state.users, sid));
 				Reflect.setField(state.history, Std.string(n), {n: n, sid: sid, name: name, text: payload.text});
 
 				// окно истории: строковые ключи-seq, старые удаляем
@@ -69,15 +60,14 @@ class ChatHx extends gamessa.script.ServerLogic<ChatState> {
 					Reflect.setField(state.history, Std.string(n - HISTORY_MAX), null);
 
 				return [Broadcast("say", {n: n, sid: sid, name: name, text: payload.text})];
-			}
 
-			if (args.get(1) == "history") {
+			case Message("history", sid, _):
 				// личная доставка: эффект send_to вместо broadcast
 				return [SendTo(sid, "history", {history: state.history})];
-			}
-		}
 
-		return null;
+			case Message(_, _, _):
+				return null;
+		}
 	}
 
 	override function tick(_dt:Float, _state:ChatState):Void {}

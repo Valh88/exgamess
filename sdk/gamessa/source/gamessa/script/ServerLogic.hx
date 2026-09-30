@@ -17,9 +17,12 @@ package gamessa.script;
 	    override function init(_args:Dynamic):ChatState
 	      return { seq: 0, users: {} };
 
-	    override function call(fn:String, args:ScriptArgs, state:ChatState):Array<Effect> {
-	      ...
-	      return [Broadcast("say", {...})];   // или null — без эффектов
+	    override function call(fn:ScriptFn, state:ChatState):Array<Effect> {
+	      switch (fn) {
+	        case Message("say", sid, payload):
+	          return [Broadcast("say", {...})];   // или null — без эффектов
+	        case _: return null;
+	      }
 	    }
 
 	    override function tick(dt:Float, state:ChatState):Void {}
@@ -48,8 +51,8 @@ class ServerLogic<TState> {
 	function init(_args:Dynamic):TState
 		return throw "ServerLogic: override init()";
 
-	/** Вызов от моста: "join" | "leave" | "message". Вернуть эффекты (или null). */
-	function call(_fn:String, _args:ScriptArgs, _state:TState):Array<Effect>
+	/** Вызов от моста, уже типизированный. Вернуть эффекты (или null). */
+	function call(_fn:ScriptFn, _state:TState):Array<Effect>
 		return null;
 
 	/** Тик комнаты. Мутировать state; возврат не нужен. */

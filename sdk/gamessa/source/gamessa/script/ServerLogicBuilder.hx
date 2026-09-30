@@ -83,11 +83,23 @@ class ServerLogicBuilder {
 				static var __inst:$instCt;
 			}).fields[0]);
 
+			// __callWire — реальный Haxe-код (DCE его сохранит): здесь живут
+			// ссылки на ScriptFn.fromWire и __lower, которые иначе вырезались бы,
+			// т.к. упоминаются только в __lua__-строке биндинга
+			final stateCt = stateType == null
+				? (macro :Dynamic)
+				: TypeTools.toComplexType(stateType);
+			fields.push((macro class {
+				static function __callWire(fn:String, a:Dynamic, s:$stateCt):Array<Dynamic> {
+					return __lower(__inst.call(gamessa.script.ScriptWire.fromWire(fn, a), s));
+				}
+			}).fields[0]);
+
 			final binding = [
 				'__logic_inst = $classRef.__inst',
 				'M = {}',
 				'function M.init(a) return __hx_toplain(__logic_inst:init(a)) end',
-				'function M.call(fn, a, s) return __hx_toplain($classRef.__lower(__logic_inst:call(fn, a, s))), __hx_toplain(s) end',
+				'function M.call(fn, a, s) return __hx_toplain($classRef.__callWire(fn, a, s)), __hx_toplain(s) end',
 				'function M.tick(dt, s) __logic_inst:tick(dt, s); return nil, __hx_toplain(s) end',
 				'M.schema = { messages = __hx_toplain($classRef.messages()), state = $stateLua }',
 			].join("\n");
