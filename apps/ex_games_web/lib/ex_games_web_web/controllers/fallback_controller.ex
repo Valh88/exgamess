@@ -41,7 +41,7 @@ defmodule ExGamesWebWeb.FallbackController do
     |> json(%{error: %{code: 500, message: inspect(reason)}})
   end
 
-  # Коды ошибок согласованы с протоколом (Colyseus-совместимые).
+  # Коды ошибок согласованы с протоколом.
   defp error_for(:not_found), do: {:not_found, 404}
   defp error_for(:save_too_large), do: {:request_entity_too_large, 413}
   defp error_for(:unknown_user), do: {:not_found, 404}

@@ -45,7 +45,7 @@ defmodule ExGamesWebWeb.RoomSocket do
         _ = mount
         state = %{room_id: room_id, session_id: session_id, closing: true}
 
-        # 4002 — ошибка/кик (коды закрытия совместимы с Colyseus)
+        # 4002 — ошибка/кик (коды закрытия согласованы с протоколом)
         {:stop, :normal, 4002, [{:binary, frame}], state}
     end
   end

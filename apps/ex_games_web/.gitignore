@@ -35,3 +35,6 @@ ex_games_web-*.tar
 npm-debug.log
 /assets/node_modules/
 
+
+# Рабочие материалы ассистента (планы, черновики) — не часть проекта
+/.zcode/
