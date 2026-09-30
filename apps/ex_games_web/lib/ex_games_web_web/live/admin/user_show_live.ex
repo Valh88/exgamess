@@ -85,111 +85,113 @@ defmodule ExGamesWebWeb.Admin.UserShowLive do
     ~H"""
     <Layouts.admin flash={@flash} admin_user={@admin_user} current_path={@current_path}>
       <div class="space-y-6">
-      <.link
-        navigate={~p"/admin/users"}
-        class="inline-flex items-center gap-1.5 text-sm text-slate-500 transition-colors hover:text-slate-300"
-      >
-        <.icon name="hero-arrow-left" class="size-4" /> Все пользователи
-      </.link>
+        <.link
+          navigate={~p"/admin/users"}
+          class="inline-flex items-center gap-1.5 text-sm text-slate-500 transition-colors hover:text-slate-300"
+        >
+          <.icon name="hero-arrow-left" class="size-4" /> Все пользователи
+        </.link>
 
-      <div class="flex items-center justify-between">
-        <div>
-          <h1 class="text-xl font-semibold text-slate-100">{@user.username}</h1>
-          <div class="mt-1.5 flex items-center gap-1.5">
-            <.badge
-              :for={r <- @user.roles}
-              tone={
-                cond do
-                  r.name == "admin" -> "indigo"
-                  r.name == "moderator" -> "amber"
-                  true -> "slate"
-                end
-              }
-            >
-              {r.name}
-            </.badge>
-            <.badge
-              :if={@user.banned_at}
-              tone="red"
-              title={"Причина: #{@user.ban_reason || "не указана"}"}
-            >
-              забанен с {@user.banned_at |> Calendar.strftime("%d.%m.%Y")}
-            </.badge>
+        <div class="flex items-center justify-between">
+          <div>
+            <h1 class="text-xl font-semibold text-slate-100">{@user.username}</h1>
+            <div class="mt-1.5 flex items-center gap-1.5">
+              <.badge
+                :for={r <- @user.roles}
+                tone={
+                  cond do
+                    r.name == "admin" -> "indigo"
+                    r.name == "moderator" -> "amber"
+                    true -> "slate"
+                  end
+                }
+              >
+                {r.name}
+              </.badge>
+              <.badge
+                :if={@user.banned_at}
+                tone="red"
+                title={"Причина: #{@user.ban_reason || "не указана"}"}
+              >
+                забанен с {@user.banned_at |> Calendar.strftime("%d.%m.%Y")}
+              </.badge>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <form phx-change="grant_role" id="grant-role-form" class="flex items-center">
+              <select
+                name="role"
+                class="rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs text-slate-200 focus:border-indigo-600 focus:outline-none"
+              >
+                <option value="">+ роль…</option>
+                <option :for={r <- @roles} value={r}>{r}</option>
+              </select>
+            </form>
+            <.admin_button :if={!@user.banned_at && !@ban_form} phx-click="ask_ban" kind="danger">
+              Бан
+            </.admin_button>
+            <.admin_button :if={@user.banned_at} phx-click="unban">Разбанить</.admin_button>
           </div>
         </div>
 
-        <div class="flex items-center gap-2">
-          <form phx-change="grant_role" id="grant-role-form" class="flex items-center">
-            <select
-              name="role"
-              class="rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs text-slate-200 focus:border-indigo-600 focus:outline-none"
+        <.panel
+          :if={@ban_form}
+          title="Причина бана"
+          subtitle="Пользователь не сможет войти (учётная запись сохраняется)"
+          class="border-rose-900/70"
+        >
+          <.form for={@ban_form} id="ban-form" phx-submit="ban" class="flex gap-3">
+            <.input
+              field={@ban_form[:reason]}
+              type="text"
+              placeholder="Причина бана"
+              class="flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-slate-200 placeholder:text-slate-600 focus:border-indigo-600 focus:outline-none"
+            />
+            <.admin_button phx-click="cancel_ban" kind="ghost">Отмена</.admin_button>
+            <.admin_button type="submit" kind="danger">Забанить</.admin_button>
+          </.form>
+        </.panel>
+
+        <.panel :if={@user.banned_at} title="Причина бана" class="border-rose-900/70">
+          <p class="text-sm text-rose-200">{@user.ban_reason || "не указана"}</p>
+        </.panel>
+
+        <div class="grid gap-4 lg:grid-cols-2">
+          <.panel title="Рейтинги" subtitle="Elo по играм">
+            <.admin_table
+              id="user-ratings"
+              rows={@ratings}
+              row_id={fn r -> "rating-#{r.game}" end}
+              empty="Матчей не было"
             >
-              <option value="">+ роль…</option>
-              <option :for={r <- @roles} value={r}>{r}</option>
-            </select>
-          </form>
-          <.admin_button :if={!@user.banned_at && !@ban_form} phx-click="ask_ban" kind="danger">
-            Бан
-          </.admin_button>
-          <.admin_button :if={@user.banned_at} phx-click="unban">Разбанить</.admin_button>
+              <:col :let={r} label="Игра">
+                <span class="font-mono text-indigo-300">{r.game}</span>
+              </:col>
+              <:col :let={r} label="Рейтинг">
+                <span class="tabular-nums">{r.rating}</span>
+              </:col>
+              <:col :let={r} label="В/П/Н">
+                <span class="tabular-nums">{r.wins}/{r.losses}/{r.draws}</span>
+              </:col>
+            </.admin_table>
+          </.panel>
+
+          <.panel title="Облачные сохранения" subtitle="Слоты без payload">
+            <.admin_table
+              id="user-saves"
+              rows={@saves}
+              row_id={fn s -> "save-#{s.key}" end}
+              empty="Сейвов нет"
+            >
+              <:col :let={s} label="Ключ">
+                <span class="font-mono text-indigo-300">{s.key}</span>
+              </:col>
+              <:col :let={s} label="Обновлён"><.datetime dt={s.updated_at} /></:col>
+            </.admin_table>
+          </.panel>
         </div>
       </div>
-
-      <.panel
-        :if={@ban_form}
-        title="Причина бана"
-        subtitle="Пользователь не сможет войти (учётная запись сохраняется)"
-        class="border-rose-900/70"
-      >
-        <.form for={@ban_form} id="ban-form" phx-submit="ban" class="flex gap-3">
-          <.input
-            field={@ban_form[:reason]}
-            type="text"
-            placeholder="Причина бана"
-            class="flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-slate-200 placeholder:text-slate-600 focus:border-indigo-600 focus:outline-none"
-          />
-          <.admin_button phx-click="cancel_ban" kind="ghost">Отмена</.admin_button>
-          <.admin_button type="submit" kind="danger">Забанить</.admin_button>
-        </.form>
-      </.panel>
-
-      <.panel :if={@user.banned_at} title="Причина бана" class="border-rose-900/70">
-        <p class="text-sm text-rose-200">{@user.ban_reason || "не указана"}</p>
-      </.panel>
-
-      <div class="grid gap-4 lg:grid-cols-2">
-        <.panel title="Рейтинги" subtitle="Elo по играм">
-          <.admin_table
-            id="user-ratings"
-            rows={@ratings}
-            row_id={fn r -> "rating-#{r.game}" end}
-            empty="Матчей не было"
-          >
-            <:col :let={r} label="Игра">
-              <span class="font-mono text-indigo-300">{r.game}</span>
-            </:col>
-            <:col :let={r} label="Рейтинг"><span class="tabular-nums">{r.rating}</span></:col>
-            <:col :let={r} label="В/П/Н">
-              <span class="tabular-nums">{r.wins}/{r.losses}/{r.draws}</span>
-            </:col>
-          </.admin_table>
-        </.panel>
-
-        <.panel title="Облачные сохранения" subtitle="Слоты без payload">
-          <.admin_table
-            id="user-saves"
-            rows={@saves}
-            row_id={fn s -> "save-#{s.key}" end}
-            empty="Сейвов нет"
-          >
-            <:col :let={s} label="Ключ">
-              <span class="font-mono text-indigo-300">{s.key}</span>
-            </:col>
-            <:col :let={s} label="Обновлён"><.datetime dt={s.updated_at} /></:col>
-          </.admin_table>
-        </.panel>
-      </div>
-    </div>
     </Layouts.admin>
     """
   end

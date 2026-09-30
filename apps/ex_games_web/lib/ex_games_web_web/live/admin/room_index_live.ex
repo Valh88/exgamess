@@ -115,91 +115,91 @@ defmodule ExGamesWebWeb.Admin.RoomIndexLive do
     ~H"""
     <Layouts.admin flash={@flash} admin_user={@admin_user} current_path={@current_path}>
       <div class="space-y-6">
-      <div>
-        <h1 class="text-xl font-semibold text-slate-100">Комнаты</h1>
-        <p class="text-sm text-slate-500">
-          Живые комнаты; обновляется по лобби-топику и опросом. Комнаты без типа
-          (созданные по room_id) не видны в листинге матчмейкера.
-        </p>
-      </div>
+        <div>
+          <h1 class="text-xl font-semibold text-slate-100">Комнаты</h1>
+          <p class="text-sm text-slate-500">
+            Живые комнаты; обновляется по лобби-топику и опросом. Комнаты без типа
+            (созданные по room_id) не видны в листинге матчмейкера.
+          </p>
+        </div>
 
-      <.panel>
-        <.admin_table
-          id="rooms"
-          rows={@streams.rooms}
-          row_id={fn {id, _r} -> id end}
-          empty="Живых комнат нет"
-        >
-          <:col :let={r} label="Комната">
-            <.link
-              navigate={~p"/admin/rooms/#{r.room_id}"}
-              class="font-mono text-indigo-300 transition-colors hover:text-indigo-200"
-            >
-              {r.room_id}
-            </.link>
-          </:col>
-          <:col :let={r} label="Тип"><span class="text-slate-300">{r.name}</span></:col>
-          <:col :let={r} label="Клиенты">
-            <span class="tabular-nums">{r.clients}/{r.max_clients}</span>
-          </:col>
-          <:col :let={r} label="Статус">
-            <.badge :if={r.locked} tone="amber">закрыта</.badge>
-            <.badge :if={!r.locked} tone="green">открыта</.badge>
-          </:col>
-          <:col :let={r} label="Возраст">{r.age || "—"}</:col>
-          <:col :let={r} label="Метаданные">
-            <code class="text-xs text-slate-400">
-              {(r.metadata == %{} && "—") || inspect(r.metadata, limit: 3)}
-            </code>
-          </:col>
-          <:action :let={r}>
-            <div class="flex flex-wrap items-center justify-end gap-2">
-              <.admin_button
-                :if={!r.locked}
-                phx-click="lock"
-                phx-value-id={r.room_id}
-                kind="ghost"
-                title="Закрыть для новых клиентов"
+        <.panel>
+          <.admin_table
+            id="rooms"
+            rows={@streams.rooms}
+            row_id={fn {id, _r} -> id end}
+            empty="Живых комнат нет"
+          >
+            <:col :let={r} label="Комната">
+              <.link
+                navigate={~p"/admin/rooms/#{r.room_id}"}
+                class="font-mono text-indigo-300 transition-colors hover:text-indigo-200"
               >
-                Lock
-              </.admin_button>
-              <.admin_button
-                :if={r.locked}
-                phx-click="unlock"
-                phx-value-id={r.room_id}
-                kind="ghost"
-                title="Открыть для новых клиентов"
-              >
-                Unlock
-              </.admin_button>
-              <.admin_button
-                :if={@confirm_dispose == r.room_id}
-                phx-click="cancel_dispose"
-                kind="ghost"
-              >
-                Отмена
-              </.admin_button>
-              <.admin_button
-                :if={@confirm_dispose == r.room_id}
-                phx-click="dispose"
-                phx-value-id={r.room_id}
-                kind="danger"
-              >
-                Точно закрыть
-              </.admin_button>
-              <.admin_button
-                :if={@confirm_dispose != r.room_id}
-                phx-click="ask_dispose"
-                phx-value-id={r.room_id}
-                kind="danger"
-              >
-                Dispose
-              </.admin_button>
-            </div>
-          </:action>
-        </.admin_table>
-      </.panel>
-    </div>
+                {r.room_id}
+              </.link>
+            </:col>
+            <:col :let={r} label="Тип"><span class="text-slate-300">{r.name}</span></:col>
+            <:col :let={r} label="Клиенты">
+              <span class="tabular-nums">{r.clients}/{r.max_clients}</span>
+            </:col>
+            <:col :let={r} label="Статус">
+              <.badge :if={r.locked} tone="amber">закрыта</.badge>
+              <.badge :if={!r.locked} tone="green">открыта</.badge>
+            </:col>
+            <:col :let={r} label="Возраст">{r.age || "—"}</:col>
+            <:col :let={r} label="Метаданные">
+              <code class="text-xs text-slate-400">
+                {(r.metadata == %{} && "—") || inspect(r.metadata, limit: 3)}
+              </code>
+            </:col>
+            <:action :let={r}>
+              <div class="flex flex-wrap items-center justify-end gap-2">
+                <.admin_button
+                  :if={!r.locked}
+                  phx-click="lock"
+                  phx-value-id={r.room_id}
+                  kind="ghost"
+                  title="Закрыть для новых клиентов"
+                >
+                  Lock
+                </.admin_button>
+                <.admin_button
+                  :if={r.locked}
+                  phx-click="unlock"
+                  phx-value-id={r.room_id}
+                  kind="ghost"
+                  title="Открыть для новых клиентов"
+                >
+                  Unlock
+                </.admin_button>
+                <.admin_button
+                  :if={@confirm_dispose == r.room_id}
+                  phx-click="cancel_dispose"
+                  kind="ghost"
+                >
+                  Отмена
+                </.admin_button>
+                <.admin_button
+                  :if={@confirm_dispose == r.room_id}
+                  phx-click="dispose"
+                  phx-value-id={r.room_id}
+                  kind="danger"
+                >
+                  Точно закрыть
+                </.admin_button>
+                <.admin_button
+                  :if={@confirm_dispose != r.room_id}
+                  phx-click="ask_dispose"
+                  phx-value-id={r.room_id}
+                  kind="danger"
+                >
+                  Dispose
+                </.admin_button>
+              </div>
+            </:action>
+          </.admin_table>
+        </.panel>
+      </div>
     </Layouts.admin>
     """
   end

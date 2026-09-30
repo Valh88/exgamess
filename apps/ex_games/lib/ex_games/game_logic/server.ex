@@ -63,6 +63,17 @@ defmodule ExGames.GameLogic.Server do
   @spec state(ExGames.Id.id()) :: {:ok, ExGames.GameLogic.state()} | {:error, term()}
   def state(id), do: GenServer.call(via(id), :state)
 
+  @doc """
+  Ручной тик для внешнего драйвера (напр. мост `ExGames.Room.Logics.Lua`):
+  выполняет `adapter.tick/3` синхронно и возвращает результат вместе с
+  состоянием — в отличие от авто-тика (`:tick_rate`), который результат
+  отбрасывает. Не смешивать с `:tick_rate > 0` (тик будет делиться между
+  двумя драйверами).
+  """
+  @spec tick(ExGames.Id.id()) ::
+          {:ok, result :: term(), ExGames.GameLogic.state()} | {:error, term()}
+  def tick(id), do: GenServer.call(via(id), :manual_tick)
+
   @doc "Останавливает логику."
   @spec stop(ExGames.Id.id()) :: :ok
   def stop(id) do
@@ -128,6 +139,22 @@ defmodule ExGames.GameLogic.Server do
     {:reply, {:ok, state.state}, state}
   end
 
+  def handle_call(:manual_tick, _from, %Server{} = state) do
+    now = System.monotonic_time(:millisecond)
+    dt = now - state.last_tick
+
+    case state.adapter.tick(state.handle, dt, state.state) do
+      {:ok, new_state} ->
+        {:reply, {:ok, nil, new_state}, %Server{state | state: new_state, last_tick: now}}
+
+      {:ok, result, new_state} ->
+        {:reply, {:ok, result, new_state}, %Server{state | state: new_state, last_tick: now}}
+
+      {:error, reason} ->
+        {:reply, {:error, reason}, state}
+    end
+  end
+
   @impl true
   def handle_info(:tick, %Server{} = state) do
     now = System.monotonic_time(:millisecond)
@@ -135,6 +162,11 @@ defmodule ExGames.GameLogic.Server do
 
     case state.adapter.tick(state.handle, dt, state.state) do
       {:ok, new_state} ->
+        if state.tick_rate > 0, do: Process.send_after(self(), :tick, state.tick_rate)
+        {:noreply, %Server{state | state: new_state, last_tick: now}}
+
+      # факультативный результат авто-тика некому отдать — отбрасываем
+      {:ok, _result, new_state} ->
         if state.tick_rate > 0, do: Process.send_after(self(), :tick, state.tick_rate)
         {:noreply, %Server{state | state: new_state, last_tick: now}}
 

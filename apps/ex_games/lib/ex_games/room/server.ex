@@ -21,7 +21,11 @@ defmodule ExGames.Room.Server do
   4000 — нормальное закрытие, 4001 — выключение сервера, 4002 — ошибка/кик.
   """
 
-  use GenServer
+  # trap_exit: Rooms.stop шлёт Process.exit({:shutdown, :dispose}) — без
+  # trapping terminate/2 (close_all, unpublish_listing, logic_terminate,
+  # room_terminate) не вызывался бы вовсе; родительский shutdown OTP
+  # обрабатывает штатно.
+  use GenServer, trap_exit: true
 
   alias ExGames.Id
   alias ExGames.Room
@@ -249,7 +253,15 @@ defmodule ExGames.Room.Server do
       {:ok, user_state} ->
         create_options = Keyword.get(opts, :options, %{})
 
-        case init_logics(Keyword.get(options, :logic, []), create_options, handle, []) do
+        # модули логики видят create-опции (runtime) поверх compile-time
+        # опций `use ExGames.Room` (напр. lua_script моста)
+        logic_options =
+          module.__room_options__()
+          |> Keyword.merge(opts)
+          |> Map.new()
+          |> Map.merge(create_options)
+
+        case init_logics(Keyword.get(options, :logic, []), logic_options, handle, []) do
           {:ok, logics} ->
             state = %__MODULE__{
               room_id: room_id,
@@ -1441,10 +1453,15 @@ defmodule ExGames.Room.Server do
     %{state | logics: List.keyreplace(state.logics, mod, 0, {mod, logic_state})}
   end
 
+  # Роутинг кадра: первый модуль с объявленным типом, затем первый
+  # wildcard-модуль (клейза `message :_`), затем сама комната.
   defp logic_for_message(%__MODULE__{} = state, type) do
     Enum.find(state.logics, fn {mod, _} ->
       function_exported?(mod, :__message_types__, 0) and type in mod.__message_types__()
-    end)
+    end) ||
+      Enum.find(state.logics, fn {mod, _} ->
+        function_exported?(mod, :__message_wildcard__, 0) and mod.__message_wildcard__() == true
+      end)
   end
 
   defp logic_for_request(%__MODULE__{} = state, type) do

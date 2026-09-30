@@ -48,12 +48,15 @@ defmodule ExGames.Rooms do
   @spec alive?(room_id()) :: boolean()
   def alive?(room_id), do: match?({:ok, pid} when is_pid(pid), lookup(room_id))
 
-  @doc "Закрывает комнату (клиентам уходит кадр закрытия)."
+  @doc "Закрывает комнату (клиентам уходит кадр закрытия). Синхронно: terminate/2 отрабатывает до возврата."
   @spec stop(room_id()) :: :ok
   def stop(room_id) do
     case lookup(room_id) do
       {:ok, pid} ->
-        Process.exit(pid, {:shutdown, :dispose})
+        # GenServer.stop гарантирует вызов terminate/2 (close_all,
+        # unpublish_listing, logic_terminate, room_terminate);
+        # Process.exit извне terminate не вызывает
+        GenServer.stop(pid, {:shutdown, :dispose})
         :ok
 
       :error ->

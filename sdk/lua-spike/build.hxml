@@ -1,0 +1,8 @@
+# Спайк Haxe→Lua: общий Haxe-код → один .lua-чанк для VM пакета `lua`.
+# Запуск: haxe build.hxml   (из этого каталога)
+-cp source
+-main Main
+-lua bin/shared.lua
+# Lua 5.3: нативные битовые операторы (_hx_bit не нужен)
+-D lua-ver=5.3
+# цель 5.4 — VM пакета `lua` совместима с 5.3-семантикой integer/float

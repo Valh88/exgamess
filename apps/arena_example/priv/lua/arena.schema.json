@@ -1,0 +1,18 @@
+{
+  "messages": [
+    "move",
+    "hit"
+  ],
+  "state": {
+    "players": {
+      "map": {
+        "hp": "number",
+        "x": "number",
+        "y": "number"
+      }
+    },
+    "scores": {
+      "map": "number"
+    }
+  }
+}

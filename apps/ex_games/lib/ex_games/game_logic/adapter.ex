@@ -21,8 +21,13 @@ defmodule ExGames.GameLogic.Adapter do
             ) ::
               {:ok, result :: term(), ExGames.GameLogic.state()} | {:error, term()}
 
+  # {:ok, result, state} — факультативный результат тика: его читает
+  # внешний драйвер тиков (напр. мост ExGames.Room.Logics.Lua) как список
+  # эффектов; авто-тик самого Server результат отбрасывает.
   @callback tick(handle :: term(), dt_ms :: non_neg_integer(), ExGames.GameLogic.state()) ::
-              {:ok, ExGames.GameLogic.state()} | {:error, term()}
+              {:ok, ExGames.GameLogic.state()}
+              | {:ok, result :: term(), ExGames.GameLogic.state()}
+              | {:error, term()}
 
   @callback stop(handle :: term()) :: :ok
 end

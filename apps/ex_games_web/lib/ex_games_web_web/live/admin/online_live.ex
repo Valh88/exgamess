@@ -46,41 +46,41 @@ defmodule ExGamesWebWeb.Admin.OnlineLive do
     ~H"""
     <Layouts.admin flash={@flash} admin_user={@admin_user} current_path={@current_path}>
       <div class="space-y-6">
-      <div>
-        <h1 class="text-xl font-semibold text-slate-100">Онлайн</h1>
-        <p class="text-sm text-slate-500">
-          Пользователи, за которыми следит Presence (Phoenix.Tracker).
-          Заполняется вызовами Presence.track_user/2 из игры.
-        </p>
-      </div>
+        <div>
+          <h1 class="text-xl font-semibold text-slate-100">Онлайн</h1>
+          <p class="text-sm text-slate-500">
+            Пользователи, за которыми следит Presence (Phoenix.Tracker).
+            Заполняется вызовами Presence.track_user/2 из игры.
+          </p>
+        </div>
 
-      <.panel
-        title="Подключённые пользователи"
-        subtitle="обновляется вживую"
-      >
-        <.admin_table
-          id="online-users"
-          rows={@streams.online}
-          row_id={fn {id, _u} -> id end}
-          empty="Никого в онлайне — игра не вызывает track_user/2"
+        <.panel
+          title="Подключённые пользователи"
+          subtitle="обновляется вживую"
         >
-          <:col :let={u} label="User ID">
-            <span class="font-mono text-slate-300">{u.user_id}</span>
-          </:col>
-          <:col :let={u} label="Имя">{u.username || "—"}</:col>
-          <:col :let={u} label="Комната">
-            <.link
-              :if={u.room_id}
-              navigate={~p"/admin/rooms/#{u.room_id}"}
-              class="font-mono text-indigo-300 hover:text-indigo-200"
-            >
-              {u.room_id}
-            </.link>
-            <span :if={!u.room_id} class="text-slate-600">—</span>
-          </:col>
-        </.admin_table>
-      </.panel>
-    </div>
+          <.admin_table
+            id="online-users"
+            rows={@streams.online}
+            row_id={fn {id, _u} -> id end}
+            empty="Никого в онлайне — игра не вызывает track_user/2"
+          >
+            <:col :let={u} label="User ID">
+              <span class="font-mono text-slate-300">{u.user_id}</span>
+            </:col>
+            <:col :let={u} label="Имя">{u.username || "—"}</:col>
+            <:col :let={u} label="Комната">
+              <.link
+                :if={u.room_id}
+                navigate={~p"/admin/rooms/#{u.room_id}"}
+                class="font-mono text-indigo-300 hover:text-indigo-200"
+              >
+                {u.room_id}
+              </.link>
+              <span :if={!u.room_id} class="text-slate-600">—</span>
+            </:col>
+          </.admin_table>
+        </.panel>
+      </div>
     </Layouts.admin>
     """
   end

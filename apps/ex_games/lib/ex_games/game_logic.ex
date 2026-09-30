@@ -57,9 +57,9 @@ defmodule ExGames.GameLogic do
   @callback call(handle :: term(), fn_name :: String.t(), args :: [term()], state()) ::
               {:ok, result :: term(), state()} | {:error, term()}
 
-  @doc "Тик логики; вернёт новое состояние."
+  @doc "Тик логики; вернёт новое состояние (и факультативный результат: {:ok, result, state})."
   @callback tick(handle :: term(), dt_ms :: non_neg_integer(), state()) ::
-              {:ok, state()} | {:error, term()}
+              {:ok, state()} | {:ok, result :: term(), state()} | {:error, term()}
 
   @doc "Останавливает адаптер."
   @callback stop(handle :: term()) :: :ok

@@ -105,66 +105,66 @@ defmodule ExGamesWebWeb.Admin.RoomShowLive do
     ~H"""
     <Layouts.admin flash={@flash} admin_user={@admin_user} current_path={@current_path}>
       <div class="space-y-6">
-      <.link
-        navigate={~p"/admin/rooms"}
-        class="inline-flex items-center gap-1.5 text-sm text-slate-500 transition-colors hover:text-slate-300"
-      >
-        <.icon name="hero-arrow-left" class="size-4" /> Все комнаты
-      </.link>
-
-      <div class="flex items-center justify-between">
-        <div>
-          <h1 class="font-mono text-xl font-semibold text-indigo-300">{@room_id}</h1>
-          <p class="text-sm text-slate-500">
-            {@listing.module} · {@listing.clients}/{@listing.max_clients} клиентов ·
-            создана {@listing.created_at |> Calendar.strftime("%d.%m.%Y %H:%M")}
-          </p>
-        </div>
-        <.badge tone={(@listing.locked && "amber") || "green"}>
-          {(@listing.locked && "закрыта") || "открыта"}
-        </.badge>
-      </div>
-
-      <.panel title="Клиенты" subtitle="session_id · user_id (из auth) · вход · RTT">
-        <.admin_table
-          id="room-clients"
-          rows={@streams.clients}
-          row_id={fn {id, _c} -> id end}
-          empty="Клиентов нет"
+        <.link
+          navigate={~p"/admin/rooms"}
+          class="inline-flex items-center gap-1.5 text-sm text-slate-500 transition-colors hover:text-slate-300"
         >
-          <:col :let={c} label="Session">
-            <span class="font-mono text-xs text-slate-300">{c.session_id}</span>
-          </:col>
-          <:col :let={c} label="User ID">
-            <span class="tabular-nums">{c.user_id || "—"}</span>
-          </:col>
-          <:col :let={c} label="Вошёл"><.datetime dt={c.joined_at} /></:col>
-          <:col :let={c} label="RTT">
-            <span class="tabular-nums">{(c.rtt && "#{c.rtt} мс") || "—"}</span>
-          </:col>
-          <:action :let={c}>
-            <.admin_button phx-click="kick" phx-value-sid={c.session_id} kind="danger">
-              Кик
-            </.admin_button>
-          </:action>
-        </.admin_table>
-      </.panel>
+          <.icon name="hero-arrow-left" class="size-4" /> Все комнаты
+        </.link>
 
-      <.panel
-        title="Состояние (set_state)"
-        subtitle="Снимок синхронизируемого wire-документа"
-      >
-        <pre
-          :if={@snapshot}
-          id="room-state-snapshot"
-          phx-no-curly-interpolation
-          class="max-h-96 overflow-auto rounded-lg border border-slate-800 bg-slate-950 p-4 font-mono text-xs leading-relaxed text-slate-300"
-        >{@snapshot}</pre>
-        <p :if={!@snapshot} id="room-state-empty" class="text-sm text-slate-500">
-          Логика ещё не публиковала состояние (set_state).
-        </p>
-      </.panel>
-    </div>
+        <div class="flex items-center justify-between">
+          <div>
+            <h1 class="font-mono text-xl font-semibold text-indigo-300">{@room_id}</h1>
+            <p class="text-sm text-slate-500">
+              {@listing.module} · {@listing.clients}/{@listing.max_clients} клиентов ·
+              создана {@listing.created_at |> Calendar.strftime("%d.%m.%Y %H:%M")}
+            </p>
+          </div>
+          <.badge tone={(@listing.locked && "amber") || "green"}>
+            {(@listing.locked && "закрыта") || "открыта"}
+          </.badge>
+        </div>
+
+        <.panel title="Клиенты" subtitle="session_id · user_id (из auth) · вход · RTT">
+          <.admin_table
+            id="room-clients"
+            rows={@streams.clients}
+            row_id={fn {id, _c} -> id end}
+            empty="Клиентов нет"
+          >
+            <:col :let={c} label="Session">
+              <span class="font-mono text-xs text-slate-300">{c.session_id}</span>
+            </:col>
+            <:col :let={c} label="User ID">
+              <span class="tabular-nums">{c.user_id || "—"}</span>
+            </:col>
+            <:col :let={c} label="Вошёл"><.datetime dt={c.joined_at} /></:col>
+            <:col :let={c} label="RTT">
+              <span class="tabular-nums">{(c.rtt && "#{c.rtt} мс") || "—"}</span>
+            </:col>
+            <:action :let={c}>
+              <.admin_button phx-click="kick" phx-value-sid={c.session_id} kind="danger">
+                Кик
+              </.admin_button>
+            </:action>
+          </.admin_table>
+        </.panel>
+
+        <.panel
+          title="Состояние (set_state)"
+          subtitle="Снимок синхронизируемого wire-документа"
+        >
+          <pre
+            :if={@snapshot}
+            id="room-state-snapshot"
+            phx-no-curly-interpolation
+            class="max-h-96 overflow-auto rounded-lg border border-slate-800 bg-slate-950 p-4 font-mono text-xs leading-relaxed text-slate-300"
+          >{@snapshot}</pre>
+          <p :if={!@snapshot} id="room-state-empty" class="text-sm text-slate-500">
+            Логика ещё не публиковала состояние (set_state).
+          </p>
+        </.panel>
+      </div>
     </Layouts.admin>
     """
   end

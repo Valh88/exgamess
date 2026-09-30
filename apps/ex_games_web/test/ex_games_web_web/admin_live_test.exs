@@ -124,6 +124,7 @@ defmodule ExGamesWebWeb.AdminLiveTest do
 
     html = render(view)
     assert html =~ "bobuser_#{suffix}"
+
     # имя админа остаётся в топбаре сайдбара — проверяем, что его СТРОКА
     # таблицы ушла
     refute html =~ "href=\"/admin/users/#{admin.id}\""
@@ -158,7 +159,10 @@ defmodule ExGamesWebWeb.AdminLiveTest do
     refute unbanned.banned_at
   end
 
-  test "отмена бана: submit после cancel не банит (кнопка type=button)", %{conn: conn, admin: admin} do
+  test "отмена бана: submit после cancel не банит (кнопка type=button)", %{
+    conn: conn,
+    admin: admin
+  } do
     {:ok, victim} = Account.register(%{"username" => "victim2", "password" => "secret123"})
 
     {:ok, view, _html} = admin_conn(conn, admin) |> live("/admin/users")

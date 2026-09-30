@@ -172,165 +172,168 @@ defmodule ExGamesWebWeb.Admin.UserIndexLive do
     ~H"""
     <Layouts.admin flash={@flash} admin_user={@admin_user} current_path={@current_path}>
       <div class="space-y-6">
-      <div>
-        <h1 class="text-xl font-semibold text-slate-100">Пользователи</h1>
-        <p class="text-sm text-slate-500">
-          {@meta.total} всего · страница {@meta.page} из {@meta.pages}
-        </p>
-      </div>
-
-      <.panel
-        :if={@ban_user}
-        title={"Бан: " <> @ban_user.username}
-        subtitle="Пользователь не сможет войти (учётная запись сохраняется)"
-        class="border-rose-900/70"
-      >
-        <.form
-          for={@ban_form}
-          id="ban-form"
-          phx-submit="confirm_ban"
-          class="flex flex-col gap-3 sm:flex-row sm:items-center"
-        >
-          <.input
-            field={@ban_form[:reason]}
-            type="text"
-            placeholder="Причина бана"
-            class="flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-slate-200 placeholder:text-slate-600 focus:border-indigo-600 focus:outline-none"
-          />
-          <.admin_button phx-click="cancel_ban" kind="ghost">Отмена</.admin_button>
-          <.admin_button type="submit" kind="danger">Забанить</.admin_button>
-        </.form>
-      </.panel>
-
-      <.panel>
-        <.form
-          for={@filter_form}
-          id="user-filters"
-          phx-change="filter"
-          class="mb-4 flex flex-wrap items-end gap-3"
-        >
-          <div>
-            <label class="mb-1 block text-xs uppercase tracking-wider text-slate-500">Поиск</label>
-            <.input
-              field={@filter_form[:search]}
-              type="text"
-              placeholder="username…"
-              phx-debounce="300"
-              class="w-48 rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-slate-200 placeholder:text-slate-600 focus:border-indigo-600 focus:outline-none"
-            />
-          </div>
-          <div>
-            <label class="mb-1 block text-xs uppercase tracking-wider text-slate-500">Роль</label>
-            <.input
-              field={@filter_form[:role]}
-              type="select"
-              options={[{"все роли", ""} | Enum.map(@roles, &{&1, &1})]}
-              class="w-40 rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-slate-200 focus:border-indigo-600 focus:outline-none"
-            />
-          </div>
-          <div>
-            <label class="mb-1 block text-xs uppercase tracking-wider text-slate-500">Статус</label>
-            <.input
-              field={@filter_form[:banned]}
-              type="select"
-              options={[{"все", ""}, {"забаненные", "true"}, {"активные", "false"}]}
-              class="w-40 rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-slate-200 focus:border-indigo-600 focus:outline-none"
-            />
-          </div>
-        </.form>
-
-        <.admin_table
-          id="users"
-          rows={@streams.users}
-          row_id={fn {id, _u} -> id end}
-          empty="Никого не найдено"
-          fixed
-          min_w="760px"
-        >
-          <:col :let={u} label="Пользователь" class="w-52">
-            <div class="truncate">
-              <.link
-                navigate={~p"/admin/users/#{u.id}"}
-                class="font-medium text-indigo-300 transition-colors hover:text-indigo-200"
-              >
-                {u.username}
-              </.link>
-            </div>
-          </:col>
-          <:col :let={u} label="Роли" class="w-44">
-            <div class="flex flex-wrap gap-1">
-              <.badge
-                :for={r <- u.roles}
-                tone={
-                  cond do
-                    r.name == "admin" -> "indigo"
-                    r.name == "moderator" -> "amber"
-                    true -> "slate"
-                  end
-                }
-              >
-                {r.name}
-              </.badge>
-              <span :if={u.roles == []} class="text-slate-600">—</span>
-            </div>
-          </:col>
-          <:col :let={u} label="Статус" class="w-44">
-            <span :if={u.banned_at} title={"Причина: #{u.ban_reason || "не указана"}"}>
-              <.badge tone="red" title={"Причина: #{u.ban_reason || "не указана"}"}>
-                бан с {format_date(u.banned_at)}
-              </.badge>
-            </span>
-            <.badge :if={!u.banned_at} tone="green">активен</.badge>
-          </:col>
-          <:action :let={u}>
-            <div class="flex flex-wrap items-center justify-end gap-2">
-              <.admin_button
-                :if={!u.banned_at}
-                phx-click="ask_ban"
-                phx-value-id={u.id}
-                kind="danger"
-              >
-                Бан
-              </.admin_button>
-              <.admin_button :if={u.banned_at} phx-click="unban" phx-value-id={u.id}>
-                Разбанить
-              </.admin_button>
-              <form
-                phx-change="grant_role"
-                phx-value-id={u.id}
-                id={"grant-role-#{u.id}"}
-                class="flex items-center"
-              >
-                <select
-                  name="role"
-                  class="rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs text-slate-200 transition-colors hover:border-slate-600 focus:border-indigo-600 focus:outline-none"
-                >
-                  <option value="">+ роль…</option>
-                  <option :for={r <- @roles} value={r}>{r}</option>
-                </select>
-              </form>
-              <.admin_button
-                :for={r <- u.roles}
-                phx-click="revoke_role"
-                phx-value-id={u.id}
-                phx-value-role={r.name}
-                kind="ghost"
-                title={"Снять роль #{r.name}"}
-              >
-                − {r.name}
-              </.admin_button>
-            </div>
-          </:action>
-        </.admin_table>
-
-        <div class="mt-4 flex items-center justify-end gap-2">
-          <.admin_button phx-click="prev_page" disabled={@meta.page <= 1}>← Назад</.admin_button>
-          <.admin_button phx-click="next_page" disabled={@meta.page * @meta.page_size >= @meta.total}>
-            Вперёд →
-          </.admin_button>
+        <div>
+          <h1 class="text-xl font-semibold text-slate-100">Пользователи</h1>
+          <p class="text-sm text-slate-500">
+            {@meta.total} всего · страница {@meta.page} из {@meta.pages}
+          </p>
         </div>
-      </.panel>
-    </div>
+
+        <.panel
+          :if={@ban_user}
+          title={"Бан: " <> @ban_user.username}
+          subtitle="Пользователь не сможет войти (учётная запись сохраняется)"
+          class="border-rose-900/70"
+        >
+          <.form
+            for={@ban_form}
+            id="ban-form"
+            phx-submit="confirm_ban"
+            class="flex flex-col gap-3 sm:flex-row sm:items-center"
+          >
+            <.input
+              field={@ban_form[:reason]}
+              type="text"
+              placeholder="Причина бана"
+              class="flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-slate-200 placeholder:text-slate-600 focus:border-indigo-600 focus:outline-none"
+            />
+            <.admin_button phx-click="cancel_ban" kind="ghost">Отмена</.admin_button>
+            <.admin_button type="submit" kind="danger">Забанить</.admin_button>
+          </.form>
+        </.panel>
+
+        <.panel>
+          <.form
+            for={@filter_form}
+            id="user-filters"
+            phx-change="filter"
+            class="mb-4 flex flex-wrap items-end gap-3"
+          >
+            <div>
+              <label class="mb-1 block text-xs uppercase tracking-wider text-slate-500">Поиск</label>
+              <.input
+                field={@filter_form[:search]}
+                type="text"
+                placeholder="username…"
+                phx-debounce="300"
+                class="w-48 rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-slate-200 placeholder:text-slate-600 focus:border-indigo-600 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label class="mb-1 block text-xs uppercase tracking-wider text-slate-500">Роль</label>
+              <.input
+                field={@filter_form[:role]}
+                type="select"
+                options={[{"все роли", ""} | Enum.map(@roles, &{&1, &1})]}
+                class="w-40 rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-slate-200 focus:border-indigo-600 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label class="mb-1 block text-xs uppercase tracking-wider text-slate-500">Статус</label>
+              <.input
+                field={@filter_form[:banned]}
+                type="select"
+                options={[{"все", ""}, {"забаненные", "true"}, {"активные", "false"}]}
+                class="w-40 rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-slate-200 focus:border-indigo-600 focus:outline-none"
+              />
+            </div>
+          </.form>
+
+          <.admin_table
+            id="users"
+            rows={@streams.users}
+            row_id={fn {id, _u} -> id end}
+            empty="Никого не найдено"
+            fixed
+            min_w="760px"
+          >
+            <:col :let={u} label="Пользователь" class="w-52">
+              <div class="truncate">
+                <.link
+                  navigate={~p"/admin/users/#{u.id}"}
+                  class="font-medium text-indigo-300 transition-colors hover:text-indigo-200"
+                >
+                  {u.username}
+                </.link>
+              </div>
+            </:col>
+            <:col :let={u} label="Роли" class="w-44">
+              <div class="flex flex-wrap gap-1">
+                <.badge
+                  :for={r <- u.roles}
+                  tone={
+                    cond do
+                      r.name == "admin" -> "indigo"
+                      r.name == "moderator" -> "amber"
+                      true -> "slate"
+                    end
+                  }
+                >
+                  {r.name}
+                </.badge>
+                <span :if={u.roles == []} class="text-slate-600">—</span>
+              </div>
+            </:col>
+            <:col :let={u} label="Статус" class="w-44">
+              <span :if={u.banned_at} title={"Причина: #{u.ban_reason || "не указана"}"}>
+                <.badge tone="red" title={"Причина: #{u.ban_reason || "не указана"}"}>
+                  бан с {format_date(u.banned_at)}
+                </.badge>
+              </span>
+              <.badge :if={!u.banned_at} tone="green">активен</.badge>
+            </:col>
+            <:action :let={u}>
+              <div class="flex flex-wrap items-center justify-end gap-2">
+                <.admin_button
+                  :if={!u.banned_at}
+                  phx-click="ask_ban"
+                  phx-value-id={u.id}
+                  kind="danger"
+                >
+                  Бан
+                </.admin_button>
+                <.admin_button :if={u.banned_at} phx-click="unban" phx-value-id={u.id}>
+                  Разбанить
+                </.admin_button>
+                <form
+                  phx-change="grant_role"
+                  phx-value-id={u.id}
+                  id={"grant-role-#{u.id}"}
+                  class="flex items-center"
+                >
+                  <select
+                    name="role"
+                    class="rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs text-slate-200 transition-colors hover:border-slate-600 focus:border-indigo-600 focus:outline-none"
+                  >
+                    <option value="">+ роль…</option>
+                    <option :for={r <- @roles} value={r}>{r}</option>
+                  </select>
+                </form>
+                <.admin_button
+                  :for={r <- u.roles}
+                  phx-click="revoke_role"
+                  phx-value-id={u.id}
+                  phx-value-role={r.name}
+                  kind="ghost"
+                  title={"Снять роль #{r.name}"}
+                >
+                  − {r.name}
+                </.admin_button>
+              </div>
+            </:action>
+          </.admin_table>
+
+          <div class="mt-4 flex items-center justify-end gap-2">
+            <.admin_button phx-click="prev_page" disabled={@meta.page <= 1}>← Назад</.admin_button>
+            <.admin_button
+              phx-click="next_page"
+              disabled={@meta.page * @meta.page_size >= @meta.total}
+            >
+              Вперёд →
+            </.admin_button>
+          </div>
+        </.panel>
+      </div>
     </Layouts.admin>
     """
   end

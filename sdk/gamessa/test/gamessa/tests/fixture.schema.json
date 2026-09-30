@@ -1,0 +1,21 @@
+{
+  "messages": [
+    "move",
+    "player_joined",
+    "hit"
+  ],
+  "state": {
+    "players": {
+      "map": {
+        "x": "number",
+        "y": "number",
+        "hp": "number"
+      }
+    },
+    "scores": { "map": "number" },
+    "labels": { "list": "string" },
+    "mode": "string",
+    "ticks": "number",
+    "active": "boolean"
+  }
+}

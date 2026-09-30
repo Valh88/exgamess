@@ -25,9 +25,9 @@ defmodule ExGames.Room.DSL do
     |> Enum.reverse()
   end
 
-  @doc "Объявленные типы сообщений (для диспетчеризации в логики)."
+  @doc "Объявленные типы сообщений (для диспетчеризации в логики); :_ — wildcard, не тип."
   def message_types(env) do
-    message_clauses(env) |> Enum.map(& &1.type) |> Enum.uniq()
+    message_clauses(env) |> Enum.map(& &1.type) |> Enum.reject(&(&1 == :_)) |> Enum.uniq()
   end
 
   @doc "Объявленные типы запросов."
@@ -39,11 +39,20 @@ defmodule ExGames.Room.DSL do
   def generate_message_defs(env) do
     for %{type: type, pattern: pattern, body: body, room: r, client: c, state: s} <-
           message_clauses(env) do
+      # wildcard :_ матчит любой тип: фактический тип доступен в клейзе
+      # переменной `type` (или `_type`, если тело её не использует)
+      type_pattern =
+        if type == :_ do
+          if body_uses_var?(body, :type), do: Macro.var(:type, nil), else: Macro.var(:_type, nil)
+        else
+          type
+        end
+
       quote do
         def handle_message(
               unquote(Macro.var(r, nil)),
               unquote(Macro.var(c, nil)),
-              unquote(type),
+              unquote(type_pattern),
               unquote(pattern),
               unquote(Macro.var(s, nil))
             ) do
@@ -51,6 +60,21 @@ defmodule ExGames.Room.DSL do
         end
       end
     end
+  end
+
+  # Переменная {name, meta, context} в теле клейзы (до гигиены) — факт
+  # использования. Контекст: nil в теле модуля, Elixir — внутри quote.
+  defp body_uses_var?(ast, name) do
+    {_, found} =
+      Macro.prewalk(ast, false, fn
+        {^name, _meta, ctx} = node, _acc when is_atom(ctx) or is_nil(ctx) ->
+          {node, true}
+
+        node, acc ->
+          {node, acc}
+      end)
+
+    found
   end
 
   @doc "Catch-all handle_message: неизвестные сообщения игнорируются."
@@ -96,16 +120,30 @@ defmodule ExGames.Room.DSL do
   def generate_type_introspection(env) do
     message_types = message_types(env)
     request_types = request_types(env)
+    wildcard? = :_ in Enum.map(message_clauses(env), & &1.type)
 
     [
-      quote do
-        @doc false
-        def __message_types__, do: unquote(Macro.escape(message_types))
+      # модуль мог определить интроспекцию сам (напр. мост Lua с типами
+      # из M.schema) — не дублируем
+      unless Module.defines?(env.module, {:__message_types__, 0}) do
+        quote do
+          @doc false
+          def __message_types__, do: unquote(Macro.escape(message_types))
+        end
       end,
-      quote do
-        @doc false
-        def __request_types__, do: unquote(Macro.escape(request_types))
+      unless Module.defines?(env.module, {:__request_types__, 0}) do
+        quote do
+          @doc false
+          def __request_types__, do: unquote(Macro.escape(request_types))
+        end
+      end,
+      unless Module.defines?(env.module, {:__message_wildcard__, 0}) do
+        quote do
+          @doc false
+          def __message_wildcard__, do: unquote(wildcard?)
+        end
       end
     ]
+    |> Enum.reject(&is_nil/1)
   end
 end

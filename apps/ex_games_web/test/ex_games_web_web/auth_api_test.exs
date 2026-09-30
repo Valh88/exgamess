@@ -1,5 +1,5 @@
 defmodule ExGamesWebWeb.AuthAPITest do
-  use ExGamesWebWeb.ConnCase, async: true
+  use ExGamesWebWeb.ConnCase, async: false
 
   test "POST /api/auth/register creates user and returns token", %{conn: conn} do
     conn =

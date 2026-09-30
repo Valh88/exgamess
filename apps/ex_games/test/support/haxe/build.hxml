@@ -1,0 +1,7 @@
+# Сборка Haxe-фикстуры MLogic (контракт M моста) в Lua-чанк.
+# Регенерация: cd test/support/haxe && haxe build.hxml
+# (нужен Haxe 4.x; чанк коммитится — тесты не требуют haxe)
+-cp source
+-main MLogic
+-lua ../lua/haxe_mlogic.lua
+-D lua-ver=5.3

@@ -16,10 +16,15 @@ defmodule ArenaExample.Boot do
     :ok =
       ExGames.Matchmaker.define_room("arena", ArenaExample.ArenaRoom, filter_by: ["mode"])
 
+    :ok =
+      ExGames.Matchmaker.define_room("lua_arena", ArenaExample.LuaArenaRoom,
+        filter_by: ["mode"]
+      )
+
     {:ok, _lobby_id} =
       ExGames.Matchmaker.join_or_create("lobby", %{}, %{})
 
-    Logger.info("[arena_example] rooms registered: chat, lobby, queue, arena")
+    Logger.info("[arena_example] rooms registered: chat, lobby, queue, arena, lua_arena")
     {:ok, %{}}
   end
 end

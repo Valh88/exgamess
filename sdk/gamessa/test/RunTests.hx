@@ -13,6 +13,7 @@ class RunTests {
 		runner.addCase(new gamessa.tests.StatePatchTest());
 		runner.addCase(new gamessa.tests.RoomTest());
 		runner.addCase(new gamessa.tests.LatencyTransportTest());
+		runner.addCase(new gamessa.tests.SchemaTest());
 
 		runner.onProgress.add(p -> {
 			for (a in p.result.assertations) {

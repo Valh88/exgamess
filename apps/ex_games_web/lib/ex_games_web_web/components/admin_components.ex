@@ -26,10 +26,14 @@ defmodule ExGamesWebWeb.AdminComponents do
       navigate={@navigate}
       class={[
         "block rounded-xl border px-5 py-4 transition-colors cursor-pointer",
-        @tone == "default" && "border-slate-800 bg-slate-900/60 hover:border-indigo-800 hover:bg-slate-900",
-        @tone == "ok" && "border-emerald-900 bg-emerald-950/40 hover:border-emerald-700 hover:bg-emerald-950/70",
-        @tone == "warn" && "border-amber-900 bg-amber-950/40 hover:border-amber-700 hover:bg-amber-950/70",
-        @tone == "danger" && "border-rose-900 bg-rose-950/40 hover:border-rose-700 hover:bg-rose-950/70"
+        @tone == "default" &&
+          "border-slate-800 bg-slate-900/60 hover:border-indigo-800 hover:bg-slate-900",
+        @tone == "ok" &&
+          "border-emerald-900 bg-emerald-950/40 hover:border-emerald-700 hover:bg-emerald-950/70",
+        @tone == "warn" &&
+          "border-amber-900 bg-amber-950/40 hover:border-amber-700 hover:bg-amber-950/70",
+        @tone == "danger" &&
+          "border-rose-900 bg-rose-950/40 hover:border-rose-700 hover:bg-rose-950/70"
       ]}
     >
       <.stat_card_body label={@label} value={@value} tone={@tone} hint={@hint} />
@@ -133,6 +137,7 @@ defmodule ExGamesWebWeb.AdminComponents do
 
   attr :kind, :string, default: "default", doc: "default | primary | danger | ghost"
   attr :disabled, :boolean, default: false
+
   # дефолт "button": кнопка внутри <.form> без type сабмитит форму
   # (браузерный дефолт submit) — сабмит только явно type="submit"
   attr :type, :string, default: "button"
@@ -170,6 +175,7 @@ defmodule ExGamesWebWeb.AdminComponents do
   attr :rows, :list, required: true, doc: "список строк или %LiveStream{}"
   attr :row_id, :any, default: nil, doc: "fn row -> DOM id (для streams обязателен)"
   attr :empty, :string, default: "Пусто"
+
   # table-fixed: ширины колонок задаются классами col[:class] и не зависят
   # от содержимого строк — не «съезжают» при перерисовке ячеек
   attr :fixed, :boolean, default: false
@@ -193,7 +199,10 @@ defmodule ExGamesWebWeb.AdminComponents do
 
     ~H"""
     <div class="overflow-x-auto rounded-xl border border-slate-800">
-      <table style={@min_w && "min-width: #{@min_w}"} class={["w-full text-sm", @fixed && "table-fixed"]}>
+      <table
+        style={@min_w && "min-width: #{@min_w}"}
+        class={["w-full text-sm", @fixed && "table-fixed"]}
+      >
         <thead>
           <tr class="border-b border-slate-800 bg-slate-900 text-left text-xs uppercase tracking-wider text-slate-500">
             <th :for={col <- @col} class={["px-4 py-2.5 font-medium", col[:class]]}>{col[:label]}</th>

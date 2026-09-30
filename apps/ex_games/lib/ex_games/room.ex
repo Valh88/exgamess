@@ -240,7 +240,9 @@ defmodule ExGames.Room do
   end
 
   # Имя переменной из AST (для перепривязки в сгенерированной клавзе).
-  defp var_name!({name, _meta, nil}) when is_atom(name) and name != :_, do: name
+  defp var_name!({name, _meta, ctx})
+      when is_atom(name) and name != :_ and (is_atom(ctx) or is_nil(ctx)),
+      do: name
 
   defp var_name!(other) do
     raise ArgumentError,
