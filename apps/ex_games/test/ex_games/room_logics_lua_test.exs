@@ -64,6 +64,7 @@ defmodule ExGames.RoomLogicsLuaTest do
              Wire.decode(wait_for(transport, {:room_data, "declared"}))
 
     FakeTransport.send_frame(room_id, sid, Wire.encode(:room_data, {"anything", %{"y" => 2}}))
+
     assert {:ok, {:room_data, "wildcard", %{"type" => "anything", "p" => %{"y" => 2}}}} =
              Wire.decode(wait_for(transport, {:room_data, "wildcard"}))
 
@@ -115,7 +116,8 @@ defmodule ExGames.RoomLogicsLuaTest do
     assert {:ok, {:room_data, "greet", %{"from" => ^sid1, "total" => 1}}} =
              Wire.decode(wait_for(t1, {:room_data, "greet"}))
 
-    assert {:ok, {:room_data, "greet", %{"total" => 1}}} = Wire.decode(wait_for(t2, {:room_data, "greet"}))
+    assert {:ok, {:room_data, "greet", %{"total" => 1}}} =
+             Wire.decode(wait_for(t2, {:room_data, "greet"}))
 
     assert eventually(fn ->
              match?({:ok, %{"greets" => 1}}, Server.state_snapshot(room_id))
@@ -136,7 +138,9 @@ defmodule ExGames.RoomLogicsLuaTest do
     # после ошибки скрипт продолжает работать (greet дожидается до ~1с —
     # этого достаточно, чтобы убедиться, что комната пережила ошибку)
     FakeTransport.send_frame(room_id, sid, Wire.encode(:room_data, {"greet", %{}}))
-    assert {:ok, {:room_data, "greet", _}} = Wire.decode(wait_for(transport, {:room_data, "greet"}))
+
+    assert {:ok, {:room_data, "greet", _}} =
+             Wire.decode(wait_for(transport, {:room_data, "greet"}))
 
     Rooms.stop(room_id)
   end
@@ -219,9 +223,12 @@ defmodule ExGames.RoomLogicsLuaTest do
     {sid, transport} = join!(room_id)
 
     FakeTransport.send_frame(room_id, sid, Wire.encode(:room_data, {"ping", %{}}))
-    assert {:ok, {:room_data, "pong", %{"total" => 1}}} = Wire.decode(wait_for(transport, {:room_data, "pong"}))
+
+    assert {:ok, {:room_data, "pong", %{"total" => 1}}} =
+             Wire.decode(wait_for(transport, {:room_data, "pong"}))
 
     FakeTransport.send_frame(room_id, sid, Wire.encode(:room_data, {"hit", %{}}))
+
     assert {:ok, {:room_data, "hit_seen", %{"total" => 1}}} =
              Wire.decode(wait_for(transport, {:room_data, "hit_seen"}))
 
@@ -267,7 +274,10 @@ defmodule ExGames.RoomLogicsLuaTest do
              Wire.decode(wait_for(transport, {:room_data, "added"}))
 
     assert eventually(fn ->
-             match?({:ok, %{"count" => 2, "joins" => %{^sid => true}}}, Server.state_snapshot(room_id))
+             match?(
+               {:ok, %{"count" => 2, "joins" => %{^sid => true}}},
+               Server.state_snapshot(room_id)
+             )
            end)
 
     Rooms.stop(room_id)
@@ -304,6 +314,7 @@ defmodule ExGames.RoomLogicsLuaTest do
     assert {:ok, {:room_data, "pong", _}} = Wire.decode(wait_for(transport, {:room_data, "pong"}))
 
     FakeTransport.send_frame(room_id, sid, Wire.encode(:room_data, {"hit", %{}}))
+
     assert {:ok, {:room_data, "hit_seen", _}} =
              Wire.decode(wait_for(transport, {:room_data, "hit_seen"}))
 

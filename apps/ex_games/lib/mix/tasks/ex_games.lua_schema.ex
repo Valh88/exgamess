@@ -19,7 +19,8 @@ defmodule Mix.Tasks.ExGames.LuaSchema do
 
   @impl Mix.Task
   def run(args) do
-    {opts, argv, _invalid} = OptionParser.parse(args, strict: [output: :string], aliases: [o: :output])
+    {opts, argv, _invalid} =
+      OptionParser.parse(args, strict: [output: :string], aliases: [o: :output])
 
     script =
       case argv do

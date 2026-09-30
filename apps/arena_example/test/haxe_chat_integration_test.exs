@@ -141,7 +141,11 @@ defmodule ArenaExample.HaxeChatIntegrationTest do
   # -------------------------------------------------------------------------
 
   defp ws(res) do
-    ExGamesWeb.Test.WsClient.start_link("ws://127.0.0.1:#{@port}", res["room_id"], res["session_id"])
+    ExGamesWeb.Test.WsClient.start_link(
+      "ws://127.0.0.1:#{@port}",
+      res["room_id"],
+      res["session_id"]
+    )
   end
 
   defp wait_frame(client, type, timeout \\ 2000) do

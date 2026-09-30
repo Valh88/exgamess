@@ -372,8 +372,9 @@ defmodule ExGames.Account do
         ahead =
           Repo.one(
             from(r in Rating,
-              where: r.game == ^game and
-                       (r.rating > ^rating or (r.rating == ^rating and r.user_id < ^user_id)),
+              where:
+                r.game == ^game and
+                  (r.rating > ^rating or (r.rating == ^rating and r.user_id < ^user_id)),
               select: count()
             )
           )
@@ -518,7 +519,13 @@ defmodule ExGames.Account do
 
   @doc "Рейтинги пользователя по всем играм (для страницы деталей)."
   @spec user_ratings(integer()) :: [
-          %{game: String.t(), rating: integer(), wins: integer(), losses: integer(), draws: integer()}
+          %{
+            game: String.t(),
+            rating: integer(),
+            wins: integer(),
+            losses: integer(),
+            draws: integer()
+          }
         ]
   def user_ratings(user_id) when is_integer(user_id) do
     Repo.all(

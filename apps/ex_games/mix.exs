@@ -37,7 +37,7 @@ defmodule ExGames.MixProject do
       # Телеметрия жизненного цикла комнат/матчмейкера.
       {:telemetry, "~> 1.2"},
       {:jason, "~> 1.4"},
-      {:lua, "~> 1.0.2"},
+      {:lua, "~> 1.0.2"}
     ]
   end
 end

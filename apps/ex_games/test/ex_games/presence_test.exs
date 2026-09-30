@@ -81,9 +81,10 @@ defmodule ExGames.PresenceTest do
 
     # уход из первой комнаты: держателем остаётся вторая
     :ok = ExGames.Room.kick(%ExGames.Room.Handle{room_id: room_a}, sid_a)
+
     assert eventually(fn ->
-      Presence.online?("202") and Presence.list_online()["202"]["room_id"] == room_b
-    end)
+             Presence.online?("202") and Presence.list_online()["202"]["room_id"] == room_b
+           end)
 
     :ok = ExGames.Room.kick(%ExGames.Room.Handle{room_id: room_b}, sid_b)
     assert eventually(fn -> not Presence.online?("202") end)

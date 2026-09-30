@@ -31,7 +31,12 @@ defmodule Mix.Tasks.ExGames.Scripts do
       scripts_dir = Path.join(root, "server_scripts")
 
       if File.dir?(scripts_dir) do
-        walk!(%{root: root, lib_mode: lib_mode?, schemas_only: schemas_only?}, scripts_dir, scripts_dir, "")
+        walk!(
+          %{root: root, lib_mode: lib_mode?, schemas_only: schemas_only?},
+          scripts_dir,
+          scripts_dir,
+          ""
+        )
       end
     end
 
@@ -101,7 +106,9 @@ defmodule Mix.Tasks.ExGames.Scripts do
         Mix.shell().info("schema #{json}")
 
       :error ->
-        Mix.shell().error("schema: не удалось извлечь M.schema из #{out} (не ServerLogic-скрипт?)")
+        Mix.shell().error(
+          "schema: не удалось извлечь M.schema из #{out} (не ServerLogic-скрипт?)"
+        )
     end
   end
 
@@ -123,7 +130,9 @@ defmodule Mix.Tasks.ExGames.Scripts do
         end
 
       true ->
-        Mix.raise("server_scripts/ не найден (запускайте из каталога приложения или из корня зонда)")
+        Mix.raise(
+          "server_scripts/ не найден (запускайте из каталога приложения или из корня зонда)"
+        )
     end
   end
 

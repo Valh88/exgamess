@@ -17,16 +17,17 @@ defmodule ArenaExample.Boot do
       ExGames.Matchmaker.define_room("arena", ArenaExample.ArenaRoom, filter_by: ["mode"])
 
     :ok =
-      ExGames.Matchmaker.define_room("lua_arena", ArenaExample.LuaArenaRoom,
-        filter_by: ["mode"]
-      )
+      ExGames.Matchmaker.define_room("lua_arena", ArenaExample.LuaArenaRoom, filter_by: ["mode"])
 
     :ok = ExGames.Matchmaker.define_room("haxe_chat", ArenaExample.HaxeChatRoom)
 
     {:ok, _lobby_id} =
       ExGames.Matchmaker.join_or_create("lobby", %{}, %{})
 
-    Logger.info("[arena_example] rooms registered: chat, lobby, queue, arena, lua_arena, haxe_chat")
+    Logger.info(
+      "[arena_example] rooms registered: chat, lobby, queue, arena, lua_arena, haxe_chat"
+    )
+
     {:ok, %{}}
   end
 end

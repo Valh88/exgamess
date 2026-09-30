@@ -272,6 +272,76 @@ defmodule ExGamesWebWeb.AdminLiveTest do
     # панель состояния рендерится всегда: либо снапшот, либо пометка «пусто»
     assert render(view) =~ "Состояние (set_state)"
     assert has_element?(view, "#room-state-snapshot") || has_element?(view, "#room-state-empty")
+
+    ExGames.Rooms.stop(room_id)
+  end
+
+  test "комнаты: фильтры по типу, статусу и поиск", %{conn: conn, admin: admin} do
+    ExGames.Matchmaker.define_room("flt_a", ExGamesWeb.Test.Room)
+    ExGames.Matchmaker.define_room("flt_b", ExGamesWeb.Test.Room)
+
+    {:ok, ra} = ExGames.Matchmaker.create("flt_a", %{"user_id" => admin.id}, %{})
+    {:ok, rb} = ExGames.Matchmaker.create("flt_b", %{"user_id" => admin.id}, %{})
+
+    {:ok, view, _html} = admin_conn(conn, admin) |> live("/admin/rooms")
+    assert has_element?(view, "#rooms-#{ra.room_id}")
+    assert has_element?(view, "#rooms-#{rb.room_id}")
+
+    # тип
+    view |> render_change("filter", %{"filter" => %{"type" => "flt_a"}})
+    assert has_element?(view, "#rooms-#{ra.room_id}")
+    refute has_element?(view, "#rooms-#{rb.room_id}")
+
+    # статус: после lock фильтр «закрытые» показывает только ra
+    ExGames.Room.lock(%ExGames.Room.Handle{room_id: ra.room_id})
+
+    view |> render_change("filter", %{"filter" => %{"status" => "locked"}})
+    assert has_element?(view, "#rooms-#{ra.room_id}")
+    refute has_element?(view, "#rooms-#{rb.room_id}")
+
+    view |> render_change("filter", %{"filter" => %{"status" => "open"}})
+    refute has_element?(view, "#rooms-#{ra.room_id}")
+    assert has_element?(view, "#rooms-#{rb.room_id}")
+
+    # поиск по room_id
+    view |> render_change("filter", %{"filter" => %{"search" => ra.room_id}})
+    assert has_element?(view, "#rooms-#{ra.room_id}")
+    refute has_element?(view, "#rooms-#{rb.room_id}")
+
+    ExGames.Rooms.stop(ra.room_id)
+    ExGames.Rooms.stop(rb.room_id)
+  end
+
+  test "комнаты: пагинация", %{conn: conn, admin: admin} do
+    ExGames.Matchmaker.define_room("paged", ExGamesWeb.Test.Room)
+
+    room_ids =
+      for _ <- 1..26 do
+        {:ok, r} = ExGames.Matchmaker.create("paged", %{"user_id" => admin.id}, %{})
+        r.room_id
+      end
+
+    {:ok, view, _html} = admin_conn(conn, admin) |> live("/admin/rooms")
+
+    # изолируемся от комнат других тестов фильтром по типу
+    view |> render_change("filter", %{"filter" => %{"type" => "paged"}})
+    assert render(view) =~ "26 всего · страница 1 из 2"
+
+    sorted = Enum.sort(room_ids)
+    [on_second | _rest] = Enum.drop(sorted, 25)
+    [on_first | _] = Enum.take(sorted, 25)
+
+    refute has_element?(view, "#rooms-#{on_second}")
+    assert has_element?(view, "#rooms-#{on_first}")
+
+    view |> element("button[phx-click='next_page']") |> render_click()
+    assert has_element?(view, "#rooms-#{on_second}")
+    refute has_element?(view, "#rooms-#{on_first}")
+    assert render(view) =~ "страница 2 из 2"
+
+    view |> element("button[phx-click='prev_page']") |> render_click()
+    assert has_element?(view, "#rooms-#{on_first}")
+    refute has_element?(view, "#rooms-#{on_second}")
   end
 
   # -------------------------------------------------------------------------

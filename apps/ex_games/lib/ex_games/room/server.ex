@@ -831,7 +831,11 @@ defmodule ExGames.Room.Server do
           })
         end
 
-        push(client.pid, Wire.encode(:ping, Map.put(payload, "ts", System.system_time(:millisecond))))
+        push(
+          client.pid,
+          Wire.encode(:ping, Map.put(payload, "ts", System.system_time(:millisecond)))
+        )
+
         {:noreply, state}
 
       {:ok, {:ping, payload}} ->
@@ -1150,7 +1154,8 @@ defmodule ExGames.Room.Server do
   defp presence_identity(auth) when is_map(auth) do
     user_id = auth_value(auth, "user_id") || auth_value(auth, :user_id)
 
-    if user_id in [nil, ""], do: nil,
+    if user_id in [nil, ""],
+      do: nil,
       else: {to_string(user_id), auth_value(auth, "username") || auth_value(auth, :username)}
   end
 
@@ -1158,8 +1163,17 @@ defmodule ExGames.Room.Server do
 
   defp auth_value(auth, key) do
     case Map.get(auth, key) do
-      nil -> nil
-      value -> value |> to_string() |> String.trim() |> case do "" -> nil; trimmed -> trimmed end
+      nil ->
+        nil
+
+      value ->
+        value
+        |> to_string()
+        |> String.trim()
+        |> case do
+          "" -> nil
+          trimmed -> trimmed
+        end
     end
   end
 

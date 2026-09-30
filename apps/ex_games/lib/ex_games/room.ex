@@ -241,8 +241,8 @@ defmodule ExGames.Room do
 
   # Имя переменной из AST (для перепривязки в сгенерированной клавзе).
   defp var_name!({name, _meta, ctx})
-      when is_atom(name) and name != :_ and (is_atom(ctx) or is_nil(ctx)),
-      do: name
+       when is_atom(name) and name != :_ and (is_atom(ctx) or is_nil(ctx)),
+       do: name
 
   defp var_name!(other) do
     raise ArgumentError,
@@ -354,7 +354,10 @@ defmodule ExGames.Room do
   """
   @spec set_state_branch(handle(), String.t() | atom(), term()) :: :ok
   def set_state_branch(%__MODULE__.Handle{} = room, key, doc) do
-    GenServer.cast(via(room.room_id), {:set_state_branch, key, ExGames.Serialization.to_wire(doc)})
+    GenServer.cast(
+      via(room.room_id),
+      {:set_state_branch, key, ExGames.Serialization.to_wire(doc)}
+    )
   end
 
   @doc "Список подключённых клиентов."

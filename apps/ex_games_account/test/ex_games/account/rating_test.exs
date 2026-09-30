@@ -102,9 +102,11 @@ defmodule ExGames.Account.RatingTest do
     top = Account.top_ratings("arena", 10)
     assert [%{position: 1}, %{position: 2}, %{position: 3}] = top
     assert hd(top).user_id == a
+
     # 1000 → 1016 (победа над b) → 1031 (победа над c, ожидание > 0.5 — прирост меньше)
     assert hd(top).rating == 1031
     assert is_binary(hd(top).username)
+
     # проигравшие оба на 984: детерминированный tie-break по user_id asc
     assert Enum.map(top, & &1.rating) == Enum.sort(Enum.map(top, & &1.rating), :desc)
   end

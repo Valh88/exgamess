@@ -132,7 +132,9 @@ defmodule ExGames.Room.Logics.Lua do
       {:ok, schema} -> {:reply, schema, state}
       :error -> {:error, "schema unavailable", state}
     end
-  end  # -------------------------------------------------------------------------
+  end
+
+  # -------------------------------------------------------------------------
   # Базовые реализации для тонких модулей (use ExGames.Room.Logics.Lua)
   # -------------------------------------------------------------------------
 
@@ -161,8 +163,13 @@ defmodule ExGames.Room.Logics.Lua do
       @doc false
       def __message_wildcard__ do
         case Keyword.fetch(@ex_games_lua_config, :wildcard) do
-          {:ok, flag} -> flag
-          :error -> ExGames.Room.Logics.Lua.schema_wildcard?(Keyword.fetch!(@ex_games_lua_config, :script))
+          {:ok, flag} ->
+            flag
+
+          :error ->
+            ExGames.Room.Logics.Lua.schema_wildcard?(
+              Keyword.fetch!(@ex_games_lua_config, :script)
+            )
         end
       end
 
@@ -215,7 +222,14 @@ defmodule ExGames.Room.Logics.Lua do
 
     case DynamicSupervisor.start_child(ExGames.LogicSupervisor, {LogicServer, child_opts}) do
       {:ok, _pid} ->
-        {:ok, %{id: id, room_id: room.room_id, script: script, state_key: Keyword.get(config, :state_key), last_state: nil}}
+        {:ok,
+         %{
+           id: id,
+           room_id: room.room_id,
+           script: script,
+           state_key: Keyword.get(config, :state_key),
+           last_state: nil
+         }}
 
       {:error, {:already_started, _}} ->
         {:stop, {:lua_logic_already_started, id}}
@@ -243,7 +257,9 @@ defmodule ExGames.Room.Logics.Lua do
     handle = %Room.Handle{room_id: state.room_id}
 
     case LogicServer.tick(state.id) do
-      {:ok, effects, new_state} -> publish_and_apply(state, handle, effects, new_state)
+      {:ok, effects, new_state} ->
+        publish_and_apply(state, handle, effects, new_state)
+
       {:error, reason} ->
         log_lua_error(state, "tick", reason)
         {:ok, state}
@@ -341,7 +357,12 @@ defmodule ExGames.Room.Logics.Lua do
         Map.get(options, :args) || []
 
     haxe? =
-      [Map.get(options, :lua_haxe), Map.get(options, "lua_haxe"), Map.get(options, :haxe), Map.get(options, "haxe")]
+      [
+        Map.get(options, :lua_haxe),
+        Map.get(options, "lua_haxe"),
+        Map.get(options, :haxe),
+        Map.get(options, "haxe")
+      ]
       |> Enum.any?(&(&1 == true))
 
     state_key =

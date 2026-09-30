@@ -61,6 +61,7 @@ defmodule ExGames.LuaAdapterTest do
                LuaAdapter.validate_doc({:tref, 1})
 
       assert {:error, "$: userdata"} = LuaAdapter.validate_doc({:userdata, :x})
+
       assert {:error, "$.bad: function"} =
                LuaAdapter.validate_doc([{"bad", {:lua_closure, nil, nil}}])
     end
