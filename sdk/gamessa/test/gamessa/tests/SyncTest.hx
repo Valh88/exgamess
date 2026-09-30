@@ -25,18 +25,27 @@ class SyncDummy extends gamessa.script.Sync<SyncDummyState>
 	@:rpc public function echo(a:Int, b:String):String
 		return b + a;
 
+	@:rpc(clients) public function notify(n:Int):Void
+		eventSeen = n;
+
+	public var eventSeen:Null<Int>;
+
 	override function onJoin(sid:String, _auth:Dynamic):Array<Effect>
 		return [Broadcast("joined", {sid: sid})];
 
 	override function onLeave(sid:String, _reason:String):Array<Effect>
 		return [Broadcast("left", {sid: sid})];
 
-	// call/reply — private (контракт моста); для тестов — проходные обёртки
+	// call/reply/__dispatchEvent — private (контракт моста/клиента);
+	// для тестов — проходные обёртки
 	public function callPub(fn:gamessa.script.ScriptFn, s:SyncDummyState):Array<Effect>
 		return call(fn, s);
 
 	public function replyPub(fn:gamessa.script.ScriptFn, s:SyncDummyState):Dynamic
 		return reply(fn, s);
+
+	public function dispatchPub(type:Dynamic, payload:Dynamic):Bool
+		return __dispatchEvent(type, payload);
 }
 
 class SyncTest extends utest.Test
@@ -128,4 +137,36 @@ class SyncTest extends utest.Test
 		utest.Assert.match(~/"number"/, SyncDummy.__stateLua);
 		utest.Assert.match(~/name/, SyncDummy.__stateLua);
 	}
+
+	#if gamessa_server
+	function testClientsEventServerStubLowersToBroadcast()
+	{
+		// серверный стаб clients-метода — broadcast-эффект (композиция)
+		utest.Assert.same([["broadcast", "notify", {n: 5}]], SyncDummy.__lower(d.notify(5)));
+	}
+	#end
+
+	function testClientsEventReceptionPath()
+	{
+		// событие НЕ в messages() и НЕ диспетчеризуется из call (входящий
+		// кадр с этим именем до тела скрипта не доходит)
+		utest.Assert.isTrue(SyncDummy.messages().indexOf("notify") < 0);
+		utest.Assert.isNull(d.callPub(Message("notify", "s1", {n: 1}), st));
+
+		// клиентский диспетчер: декод payload → тело; true/false
+		utest.Assert.isTrue(d.dispatchPub("notify", {n: 3}));
+		utest.Assert.equals(3, d.eventSeen);
+		utest.Assert.isFalse(d.dispatchPub("nope",
+			{
+			}));
+	}
+
+	#if !gamessa_server
+	function testClientsStubExecutesLocallyOnClient()
+	{
+		// клиентский стаб clients-метода исполняет тело локально
+		d.notify(7);
+		utest.Assert.equals(7, d.eventSeen);
+	}
+	#end
 }

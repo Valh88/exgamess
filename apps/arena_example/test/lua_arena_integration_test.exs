@@ -85,8 +85,17 @@ defmodule ArenaExample.LuaArenaIntegrationTest do
     assert {:room_data, "player_joined", %{"sid" => ^sid}} =
              ExGamesWeb.Test.WsClient.wait_frame(client, {:room_data, "player_joined"})
 
-    # первый кадр состояния — полный снапшот от скрипта (delta-режим)
+    # первый кадр состояния (handshake); под нагрузкой он может уйти ДО
+    # join-эффектов скрипта — тогда игрок допрывает следующим патчем
     {:room_state, state} = ExGamesWeb.Test.WsClient.wait_frame(client, :room_state)
+
+    state =
+      if match?(%{"players" => %{^sid => _}}, state) do
+        state
+      else
+        wait_patch_apply(client, state)
+      end
+
     assert state["players"][sid]["hp"] == 100
     assert state["scores"][sid] == 0
 

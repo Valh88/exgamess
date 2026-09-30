@@ -303,6 +303,30 @@ wildcard-клейзы). Чистым Lua-скриптам request-поток т�
 переопределить `reply(fn, state):Dynamic` — базовый `null` даёт
 «нет обработчика».
 
+### @:rpc(clients) — сервер → клиенты (типизированные события)
+
+`@:rpc(clients)` объявляет событие, которое рассылает СЕРВЕР, а
+исполняют клиенты (только `Void` — ответного канала вверх нет):
+
+```haxe
+@:rpc(clients) public function userCount(count:Int):Void { /* тело на клиенте */ }
+
+// сервер (внутри call/onJoin/onLeave): стаб понижает вызов в эффект,
+// эффекты надо ВЕРНУТЬ (из tick они не доходят — tick возвращает Void):
+override function onJoin(sid:String, auth:Dynamic):Array<Effect>
+    return [Broadcast("joined", {sid: sid})]
+        .concat(userCount(Reflect.fields(state.users).length));
+```
+
+Клиент после `bind(room)` подписан на `room.onMessage`: кадр с именем
+события декодируется в типизированные аргументы, и тело исполняется
+локально; `state` держит последний снапшот (`onStateChange`).
+На сервере тело clients-метода не выполняется. Имена clients-методов
+НЕ попадают в `messages()`/`M.schema.messages` — это исходящие типы,
+входящий кадр с таким именем скрипт не получает. Режимы иного рода
+(`all`, `owner`) не поддерживаются — `@:rpc(что-угодно)` даёт ошибку
+компиляции.
+
 ## Пример: Haxe-чат (arena_example, тип комнаты `haxe_chat`)
 
 Рабочий образец «создание скрипта → комната → обновление логики» на

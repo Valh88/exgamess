@@ -23,7 +23,10 @@ typedef SyncState =
 	typedef состояния, те же имена @:rpc). Один и тот же класс собирается
 	и в Lua-чанк (`-D gamessa-server`, тела выполняются), и сюда — где
 	имена становятся типизированными стабами: `chat.say(text)` →
-	`room.send("say", …)`, `chat.seq(v -> …)` → `room.request("seq", …)`.
+	`room.send("say", …)`, `chat.seq(v -> …)` → `room.request("seq", …)`,
+	а `@:rpc(clients) userCount` — сервер→клиенты: `bind` подписывается
+	на `room.onMessage`, и при кадре "userCount" тело исполняется здесь
+	(см. trace в демо).
 
 	Демо: `hl bin/example.hl <endpoint> sync_chat` (Main.hx).
 **/
@@ -47,4 +50,7 @@ class ChatSync extends gamessa.script.Sync<SyncState>
 
 	@:rpc public function history():Dynamic
 		return null;
+
+	@:rpc(clients) public function userCount(count:Int):Void
+		trace('* теперь участников: $count');
 }

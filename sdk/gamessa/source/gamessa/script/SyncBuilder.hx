@@ -12,11 +12,13 @@ import haxe.macro.TypeTools;
 	@:autoBuild-билдер Sync (см. Sync.hx). Для каждого наследника:
 
 	* валидирует и обрабатывает @:rpc-методы: тело переименовывается в
-	  `__im_<имя>` (выполняется на сервере), классифицируется по типу
-	  возврата — `Void`/`Array<Effect>` = send-метод (путь call), любой
-	  другой = request-метод (путь reply, значение уходит клиенту);
-	* генерирует `messages()` из имён @:rpc (если не задан вручную) —
-	  она попадает в `M.schema.messages` биндинга;
+	  `__im_<имя>`, режим парсится из атрибута (`@:rpc` / `@:rpc(server)`
+	  = клиент→сервер, `@:rpc(clients)` = сервер→клиенты, только Void);
+	  server-методы классифицируются по типу возврата — `Void`/
+	  `Array<Effect>` = send (путь call), любой другой = request (путь
+	  reply, значение уходит клиенту);
+	* генерирует `messages()` из имён server-методов (если не задан
+	  вручную) — она попадает в `M.schema.messages` биндинга;
 	* генерирует `call` (если не задан вручную): Message → send-@:rpc
 	  по имени кадра с декодом аргументов из payload, Join/Leave →
 	  хуки `onJoin`/`onLeave`; перед диспетчеризацией заполняет
@@ -24,21 +26,38 @@ import haxe.macro.TypeTools;
 	* генерирует `reply` (если не задан вручную): Request → request-@:rpc
 	  по имени, возвращённое значение уходит запросившему; null = «нет
 	  обработчика» (мост ответит ошибкой);
-	* генерирует стабы: на сервере (`-D gamessa-server`) — делегация в
-	  `__im_<имя>` (локальный вызов из других @:rpc-тел), на клиенте —
-	  отправка через `room`: send → `room.send`, request →
-	  `room.request` с колбэками результата.
+	* генерирует стабы: на сервере (`-D gamessa-server`) server-метод —
+	  делегация в `__im_<имя>` (локальный вызов из других @:rpc-тел),
+	  clients-метод — понижение в `[Broadcast(имя, {аргументы})]`; на
+	  клиенте — отправка через `room`: send → `room.send`, request →
+	  `room.request` с колбэками результата, clients-метод — локальное
+	  исполнение тела (приём события);
+	* при наличии clients-методов — клиентский приёмный путь:
+	  `__dispatchEvent(type, payload)` (декод → `__im_`) и переопределение
+	  `bind` с подпиской на `room.onMessage`.
 
 	Порядок с `ServerLogicBuilder` не важен: M-биндинг ссылается на
 	`messages()`/`__callWire` по имени из runtime-строки, а типизация
 	всех полей происходит после всех авто-билдов.
 **/
+
 #if macro
+/** Режим @:rpc-метода. */
+enum RMode
+{
+	/** клиент → сервер (умолчание, явный `@:rpc(server)`). */
+	RServer;
+
+	/** сервер → клиенты: типизированное broadcast-событие. */
+	RClients;
+}
+
 typedef Rpc =
 {
 	name:String,
 	args:Array<FunctionArg>,
 	ret:Null<ComplexType>,
+	mode:RMode,
 	isSend:Bool,
 }
 
@@ -66,6 +85,8 @@ class SyncBuilder
 			if (!hasMeta(f, ":rpc"))
 				continue;
 
+			final mode = parseMode(f);
+
 			final fn = switch (f.kind)
 			{
 				case FFun(fn): fn;
@@ -88,10 +109,15 @@ class SyncBuilder
 			if (retType == null)
 				Context.fatalError('@:rpc метод "${f.name}": не удалось разрешить тип возврата', f.pos);
 
-			final isSend = switch (Context.followWithAbstracts(retType, true))
+			final followed = Context.followWithAbstracts(retType, true);
+			final isVoid = switch (followed)
 			{
 				case TAbstract(_.get() => {name: "Void"}, _): true;
 
+				case _: false;
+			}
+			final isEffectArray = switch (followed)
+			{
 				case TInst(_.get() => {pack: [], name: "Array"}, [p]):
 					switch (p)
 					{
@@ -103,6 +129,12 @@ class SyncBuilder
 				case _: false;
 			}
 
+			// ответного канала сервер→клиент нет: clients-метод — только Void
+			if (mode == RClients && !isVoid)
+				Context.fatalError('@:rpc(clients) метод "${f.name}" должен возвращать Void', f.pos);
+
+			final isSend = mode == RClients ? false : (isVoid || isEffectArray);
+
 			// тело — под служебным именем; стаб будет добавлен позже
 			f.name = "__im_" + f.name;
 			f.meta = [for (m in f.meta) if (m.name != ":rpc") m];
@@ -112,6 +144,7 @@ class SyncBuilder
 					name: f.name.substr("__im_".length),
 					args: fn.args,
 					ret: fn.ret,
+					mode: mode,
 					isSend: isSend
 				});
 		}
@@ -119,10 +152,12 @@ class SyncBuilder
 		if (rpcs.length == 0)
 			return fields;
 
-		final send = [for (r in rpcs) if (r.isSend) r];
-		final request = [for (r in rpcs) if (!r.isSend) r];
+		final send = [for (r in rpcs) if (r.mode == RServer && r.isSend) r];
+		final request = [for (r in rpcs) if (r.mode == RServer && !r.isSend) r];
+		final events = [for (r in rpcs) if (r.mode == RClients) r];
 
-		// messages() — из имён @:rpc (порядок объявления)
+		// messages() — имена server-методов (входящие типы кадра; порядок
+		// объявления); clients-события приходят клиенту, не скрипту
 		if (!hasField(fields, "messages"))
 			fields.push(
 				{
@@ -132,7 +167,7 @@ class SyncBuilder
 						{
 							args: [],
 							ret: macro :Array<String>,
-							expr: macro return $v{[for (r in rpcs) r.name]},
+							expr: macro return $v{[for (r in send.concat(request)) r.name]},
 						}),
 					pos: pos,
 					meta: [],
@@ -210,6 +245,53 @@ class SyncBuilder
 		for (r in rpcs)
 			fields.push(stubField(r, server, pos));
 
+		// clients-методы: клиентский приём — диспетчер событий + подписка в bind
+		if (events.length > 0)
+		{
+			fields.push(
+				{
+					name: "__dispatchEvent",
+					access: [APrivate],
+					kind: FFun(
+						{
+							args: [
+								{name: "type", type: macro :Dynamic}, {name: "payload", type: macro :Dynamic},],
+							ret: macro :Bool,
+							expr: macro
+							{$b{eventChain(events, pos)}},
+						}),
+					pos: pos,
+					meta: [],
+				});
+
+			final roomCt:ComplexType = Context.defined("lua") ? (macro :Dynamic) : TPath(
+				{
+					pack: ["gamessa"],
+					name: "Room",
+					params: [TPType(stateCt)]
+				});
+
+			final bindExprs:Array<Expr> = [macro super.bind(room)];
+			if (!Context.defined("lua"))
+				bindExprs.push(macro room.onMessage.add(e -> __dispatchEvent(e.type, e.message)));
+
+			fields.push(
+				{
+					name: "bind",
+					access: [APublic, AOverride],
+					kind: FFun(
+						{
+							args: [
+								{name: "room", type: roomCt}],
+							ret: macro :Void,
+							expr: macro
+							{$b{bindExprs}},
+						}),
+					pos: pos,
+					meta: [],
+				});
+		}
+
 		return fields;
 	}
 
@@ -236,6 +318,53 @@ class SyncBuilder
 	static function hasMeta(f:Field, name:String):Bool
 		return f.meta != null && Lambda.exists(f.meta, m -> m.name == name);
 
+	/**
+		Режим из атрибута: `@:rpc` / `@:rpc(server)` → RServer,
+		`@:rpc(clients)` → RClients; иное — fatal (молча съеденные
+		параметры хуже отсутствия опций).
+	**/
+	static function parseMode(f:Field):RMode
+	{
+		final meta = Lambda.find(f.meta, m -> m.name == ":rpc");
+
+		if (meta.params == null || meta.params.length == 0)
+			return RServer;
+
+		if (meta.params.length > 1)
+			Context.fatalError('@:rpc "${f.name}": один режим на метод (server | clients)', f.pos);
+
+		return switch (meta.params[0].expr)
+		{
+			case EConst(CIdent("server")):
+				RServer;
+
+			case EConst(CIdent("clients")):
+				RClients;
+
+			case EConst(CIdent(other)):
+				Context.fatalError('@:rpc(${other}) у "${f.name}": поддерживаются только server и clients', f.pos);
+
+			case _:
+				Context.fatalError('@:rpc "${f.name}": режим — идентификатор server | clients', f.pos);
+		}
+	}
+
+	/**
+		if-цепочка клиентского диспетчера событий: `if (type == "x") {
+		декод аргументов; __im_x(...); return true; }`, в конце — false.
+	**/
+	static function eventChain(rpcs:Array<Rpc>, pos:Position):Array<Expr>
+	{
+		final stmts:Array<Expr> = [];
+		for (r in rpcs)
+		{
+			final body = decodeArgs(r, pos).concat([callIm(r, pos), macro return true]);
+			stmts.push(macro if (type == $v{r.name}) $b{body});
+		}
+		stmts.push(macro return false);
+		return stmts;
+	}
+
 	/** Декод аргументов из payload: типизированные локалы из полей документа. */
 	static function decodeArgs(r:Rpc, pos:Position):Array<Expr>
 		return [
@@ -261,7 +390,13 @@ class SyncBuilder
 		return {expr: ECall({expr: EConst(CIdent("__im_" + r.name)), pos: pos}, args), pos: pos};
 	}
 
-	/** Стаб @:rpc-метода: сервер — делегация в __im_; клиент — отправка через room. */
+	/**
+		Стаб @:rpc-метода. server-режим: сервер — делегация в `__im_`,
+		клиент — отправка через `room` (send → `room.send`, request →
+		`room.request`). clients-режим: сервер — понижение вызова в
+		`[Broadcast(имя, {аргументы})]` (эффекты возвращает вызывающий),
+		клиент — локальное исполнение тела (приём события).
+	**/
 	static function stubField(r:Rpc, server:Bool, pos:Position):Field
 	{
 		final payloadObj:Expr =
@@ -269,6 +404,31 @@ class SyncBuilder
 				expr: EObjectDecl([for (a in r.args) {field: a.name, expr: macro $i{a.name}}]),
 				pos: pos,
 			};
+
+		if (r.mode == RClients)
+		{
+			if (server)
+				return {
+					name: r.name,
+					access: [APublic],
+					kind: FFun(
+						{
+							args: copyArgs(r.args),
+							ret: macro :Array<gamessa.script.Effect>,
+							expr: macro return [gamessa.script.Effect.Broadcast($v{r.name}, $payloadObj)],
+						}),
+					pos: pos,
+					meta: [],
+				};
+
+			return {
+				name: r.name,
+				access: [APublic],
+				kind: FFun({args: copyArgs(r.args), ret: macro :Void, expr: {expr: EReturn(callIm(r, pos)), pos: pos}}),
+				pos: pos,
+				meta: [],
+			};
+		}
 
 		if (server)
 		{

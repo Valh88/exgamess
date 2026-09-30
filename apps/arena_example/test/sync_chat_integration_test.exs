@@ -92,6 +92,12 @@ defmodule ArenaExample.SyncChatIntegrationTest do
     say_b = wait_frame(cb, "say")
     assert say_b["n"] == 1
 
+    # @:rpc(clients): типизированное событие userCount — оба join'а довели
+    # счётчик до 2, оба клиента его получили (промежуточный 1 мог уйти
+    # только первому подключившемуся — порядок join'ов/подключений гонкий)
+    wait_user_count(ca, 2)
+    wait_user_count(cb, 2)
+
     # request-метод seq(): значение-ответ кадром RoomResponse
     ExGamesWeb.Test.WsClient.send_binary(ca, Wire.encode(:room_request, {1, "seq", %{}}))
 
@@ -125,12 +131,31 @@ defmodule ArenaExample.SyncChatIntegrationTest do
     assert {:error, %{"code" => 526, "message" => "unknown request", "request_id" => 4}} =
              ExGamesWeb.Test.WsClient.wait_frame(ca, :error)
 
-    # leave второго — первому уходит "left" (onLeave)
+    # leave второго — первому уходит "left" и userCount(1) (onLeave)
     ExGamesWeb.Test.WsClient.send_binary(cb, Wire.encode(:leave_room))
     assert %{"sid" => left_sid} = wait_frame(ca, "left", 3000)
     assert left_sid == res_b["session_id"]
 
+    assert {:room_data, "userCount", %{"count" => 1}} =
+             ExGamesWeb.Test.WsClient.wait_frame(ca, {:room_data, "userCount"})
+
     ExGamesWeb.Test.WsClient.stop(ca)
+  end
+
+  # ждём кадр userCount с конкретным значением, пропуская другие счётчики
+  defp wait_user_count(client, expected, tries \\ 20)
+
+  defp wait_user_count(_client, expected, 0), do: flunk("userCount #{expected} did not arrive")
+
+  defp wait_user_count(client, expected, tries) do
+    {:room_data, "userCount", %{"count" => c}} =
+      ExGamesWeb.Test.WsClient.wait_frame(client, {:room_data, "userCount"})
+
+    if c == expected do
+      :ok
+    else
+      wait_user_count(client, expected, tries - 1)
+    end
   end
 
   # -------------------------------------------------------------------------

@@ -53,18 +53,27 @@ class ChatSync extends gamessa.script.Sync<SyncState> {
 	@:rpc public function history():Dynamic
 		return state.history;
 
+	// --- @:rpc(clients): сервер → клиенты (типизированное событие) ---------
+
+	/** Число участников в комнате — рассылается после каждого join/leave.
+		Серверный стаб понижает вызов в Broadcast; тело исполняется на
+		клиенте (см. зеркальный класс в SDK example). */
+	@:rpc(clients) public function userCount(count:Int):Void {}
+
 	// --- события ----------------------------------------------------------
 
 	override function onJoin(sid:String, auth:Dynamic):Array<Effect> {
 		final name:String = usernameOf(auth);
 		Reflect.setField(state.users, sid, name);
-		return [Broadcast("joined", {sid: sid, name: name, v: VERSION})];
+		return [Broadcast("joined", {sid: sid, name: name, v: VERSION})]
+			.concat(userCount(Reflect.fields(state.users).length));
 	}
 
 	override function onLeave(sid:String, _reason:String):Array<Effect> {
 		// deleteField на plain-таблицах падает — setField(null) = rawset(nil)
 		Reflect.setField(state.users, sid, null);
-		return [Broadcast("left", {sid: sid})];
+		return [Broadcast("left", {sid: sid})]
+			.concat(userCount(Reflect.fields(state.users).length));
 	}
 
 	static function usernameOf(v:Dynamic):String {

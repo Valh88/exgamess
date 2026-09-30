@@ -11,19 +11,33 @@ package gamessa.script;
 	* **клиент** (js/hl, без define) — @:rpc-методы становятся стабами:
 	  `chat.say("hi")` → `room.send("say", …)`, `chat.seq(v -> …)` →
 	  `room.request("seq", …)`. Состояние типизировано тем же typedef'ом
-	  (`Room<TState>`) — сервер→клиент-репликация идёт через схему
-	  состояния как у обычных скриптов.
+	  (`Room<TState>`); после `bind` поле `state` держит последний
+	  снапшот (onStateChange) — его видят тела clients-событий.
 
 	  var chat = new ChatSync();
 	  chat.bind(room);
 	  chat.say("привет");
 	  chat.seq(v -> trace("seq = " + v));
 
-	@:rpc-методы: public, не static, без optional-аргументов, с явным
-	типом возврата. В теле доступны `state` (текущий документ; сервер)
-	и `caller` (session_id вызвавшего; сервер). `SyncBuilder` генерирует
-	`messages()` (из имён @:rpc, если не задан вручную), `call`/`reply`
-	(если не заданы вручную) и стабы.
+	Режимы @:rpc (направление вызова):
+
+	* `@:rpc` / `@:rpc(server)` — клиент → сервер (умолчание). На клиенте
+	  стаб шлёт; на сервере тело исполняется. Возврат `Void`/`Array<Effect>`
+	  = send-путь, любой другой = request-путь (ответ значением).
+	* `@:rpc(clients)` — сервер → клиенты (типизированное событие).
+	  Только `Void`. На сервере стаб понижает вызов в
+	  `[Broadcast(имя, {аргументы})]` — верните эффекты из call/onJoin/
+	  onLeave (из tick эффекты не доходят). На клиенте `bind` подписывается
+	  на `room.onMessage`: кадр с этим именем декодируется в аргументы и
+	  тело исполняется локально.
+
+	Ограничения: public, не static, без optional-аргументов, с явным
+	типом возврата; один режим на метод. В теле доступны `state`
+	(сервер — документ скрипта; клиент — последний снапшот) и `caller`
+	(session_id вызвавшего; только server-режим). `SyncBuilder`
+	генерирует `messages()` (имена server-методов), `call`/`reply`
+	(если не заданы вручную), стабы и — при наличии clients-методов —
+	клиентский диспетчер событий.
 
 	Серверные хуки (опционально): `onJoin(sid, auth)`, `onLeave(sid,
 	reason)` — вернуть эффекты или null.
@@ -56,7 +70,12 @@ class Sync<TState> extends ServerLogic<TState>
 		super();
 	}
 
-	/** Клиент: привязать канал комнаты — стабы @:rpc шлют через него. */
+	/**
+		Клиент: привязать канал комнаты — стабы @:rpc шлют через него,
+		`state` держит последний снапшот (onStateChange). Наследники с
+		clients-методами получают переопределение с подпиской на
+		`room.onMessage` (диспетчеризация типизированных событий).
+	**/
 	#if lua
 	public function bind(room:Dynamic):Void
 	#else
@@ -64,6 +83,9 @@ class Sync<TState> extends ServerLogic<TState>
 	#end
 	{
 		this.room = room;
+		#if !lua
+		room.onStateChange.add(s -> state = s);
+		#end
 	}
 
 	/** Серверный хук: клиент присоединился. Вернуть эффекты (или null). */

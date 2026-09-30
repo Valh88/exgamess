@@ -735,15 +735,19 @@ end
 ChatSync.prototype.__im_history = function(self) 
   do return self.state.history end
 end
+ChatSync.prototype.__im_userCount = function(self,count) 
+end
 ChatSync.prototype.onJoin = function(self,sid,auth) 
   local name = ChatSync.usernameOf(auth);
   self.state.users[sid] = name;
-  do return _hx_tab_array({[0]=__gamessa_script_Effect.Broadcast("joined", _hx_o({__fields__={sid=true,name=true,v=true},sid=sid,name=name,v=2}))}, 1) end
+  local tmp = self:userCount(Reflect.fields(self.state.users).length);
+  do return _hx_tab_array({[0]=__gamessa_script_Effect.Broadcast("joined", _hx_o({__fields__={sid=true,name=true,v=true},sid=sid,name=name,v=2}))}, 1):concat(tmp) end
 end
 ChatSync.prototype.onLeave = function(self,sid,_reason) 
   local value = nil;
   self.state.users[sid] = value;
-  do return _hx_tab_array({[0]=__gamessa_script_Effect.Broadcast("left", _hx_o({__fields__={sid=true},sid=sid}))}, 1) end
+  local tmp = self:userCount(Reflect.fields(self.state.users).length);
+  do return _hx_tab_array({[0]=__gamessa_script_Effect.Broadcast("left", _hx_o({__fields__={sid=true},sid=sid}))}, 1):concat(tmp) end
 end
 ChatSync.prototype.call = function(self,fn,s) 
   self:set_state(s);
@@ -797,6 +801,20 @@ end
 ChatSync.prototype.history = function(self) 
   do return self:__im_history() end
 end
+ChatSync.prototype.userCount = function(self,count) 
+  do return _hx_tab_array({[0]=__gamessa_script_Effect.Broadcast("userCount", _hx_o({__fields__={count=true},count=count}))}, 1) end
+end
+ChatSync.prototype.__dispatchEvent = function(self,type,payload) 
+  if (type == "userCount") then 
+    local count = Reflect.field(payload, "count");
+    self:__im_userCount(count);
+    do return true end;
+  end;
+  do return false end
+end
+ChatSync.prototype.bind = function(self,room) 
+  __gamessa_script_Sync.prototype.bind(self,room);
+end
 
 ChatSync.prototype.__class__ =  ChatSync
 ChatSync.__super__ = __gamessa_script_Sync
@@ -844,6 +862,13 @@ Reflect.field = function(o,field)
     elseif _hx_result ~= _hx_pcall_default then
       return _hx_result
     end;
+  end;
+end
+Reflect.fields = function(o) 
+  if (_G.type(o) == "string") then 
+    do return Reflect.fields(String.prototype) end;
+  else
+    do return _hx_field_arr(o) end;
   end;
 end
 
