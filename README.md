@@ -3,11 +3,9 @@
 Расширяемый **master-server фреймворк для онлайн-игр** на Elixir/OTP поверх
 Phoenix 1.8: аккаунты и RBAC, матчмейкинг с двухфазным join, комнаты,
 чат, лобби, очередь подбора, presence и мост к нативной игровой логике.
-Референс архитектуры — [Colyseus](https://github.com/colyseus/colyseus).
 
 Клиент — любой язык: фреймворк говорит по HTTP (JSON) + WebSocket
-(бинарный протокол `[opcode u8][msgpack]`, совместимый по кодам операций
-с Colyseus). Haxe-клиентский SDK — [`sdk/gamessa`](sdk/gamessa/README.md) (JS + HashLink, авто-reconnect).
+(бинарный протокол `[opcode u8][msgpack]`). Haxe-клиентский SDK — [`sdk/gamessa`](sdk/gamessa/README.md) (JS + HashLink, авто-reconnect).
 
 ## Структура (umbrella)
 

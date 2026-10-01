@@ -21,7 +21,7 @@ class Wire {
 	public static inline var OP_ROOM_REQUEST = 21;
 	public static inline var OP_ROOM_RESPONSE = 22;
 
-	// Коды ошибок протокола (совместимы с Colyseus).
+	// Коды ошибок протокола.
 	public static inline var ERR_UNKNOWN_ROOM_TYPE = 520;
 	public static inline var ERR_NO_ROOM = 521;
 	public static inline var ERR_UNKNOWN_ROOM = 522;

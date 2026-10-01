@@ -28,6 +28,8 @@ defmodule ExGames.Application do
       {DynamicSupervisor, name: ExGames.LogicSupervisor},
       ExGames.Matchmaker,
       ExGames.Presence,
+      # агрегатор доменных метрик (счётчики/gauge'и для /metrics и админки)
+      ExGames.Telemetry,
       # плановое опустошение ноды (graceful shutdown): см. ExGames.Runtime.Drain
       ExGames.Runtime.Drain
     ]

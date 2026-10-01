@@ -36,7 +36,10 @@ LiveView 1.x не умеет писать сессию, поэтому форм�
 
 - **`/admin` — Обзор.** Стат-карты (пользователи, онлайн, живые комнаты,
   клиенты в комнатах), бейдж draining, счётчики живых комнат по типам
-  (`Matchmaker.definitions/0`). Опрос 2 с — все чтения дешёвые
+  (`Matchmaker.definitions/0`) и панель **Метрики ноды** — счётчики
+  событий и gauge'и из `ExGames.Telemetry.snapshot/0` с последнего старта
+  (полный снимок для скрейпера — `GET /metrics`, см. OBSERVABILITY.md).
+  Опрос 2 с — все чтения дешёвые
   (ETS/Registry/Tracker + один агрегат БД). Кнопки **Drain** / **Reset**:
   `Drain.drain/1` блокирующий (до `:drain_timeout_ms`), поэтому
   выполняется в `Task`.
@@ -56,8 +59,14 @@ LiveView 1.x не умеет писать сессию, поэтому форм�
 - **`/admin/rooms/:id` — Детали комнаты.** Клиенты
   (`Room.Server.clients_detailed/1`: session_id, user_id из auth,
   joined_at, RTT) с киком per-client; снапшот синхронизируемого
-  состояния (`Room.Server.state_snapshot/1`, read-only, рендер
-  обрезается на ~20 КБ).
+  состояния (`Room.Server.state_snapshot/1`, обрезается на ~20 КБ);
+  схема состояния логики из `M.schema` (если есть) и форма
+  **«Установить состояние»** — JSON-документ валидируется по схеме
+  (`ExGames.Room.StateSchema.validate_root/2`, карты схем —
+  `Room.Server.state_schemas/1`) до отправки, отклонённый показывается
+  ошибкой с путём, применённый идёт через `Room.set_state/2` (гейт
+  сервера перепроверяет). Поле автозаполняется текущим (необрезанным)
+  снапшотом и не перезатирается при опросе (`phx-change` хранит ввод).
 - **`/admin/online` — Онлайн.** `Presence.list_online/0` + живые
   join/leave (`Presence.subscribe()` → бродкасты из `handle_diff`).
   Заполняется автоматически: `Room.Server` трекает пользователя при

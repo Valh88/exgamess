@@ -52,6 +52,7 @@ defmodule ExGamesWebWeb.AdminLiveTest do
 
     assert has_element?(view, "#drain-status")
     assert has_element?(view, "#room-types")
+    assert has_element?(view, "#node-metrics")
     assert render(view) =~ "Обзор"
   end
 
@@ -274,6 +275,53 @@ defmodule ExGamesWebWeb.AdminLiveTest do
     assert has_element?(view, "#room-state-snapshot") || has_element?(view, "#room-state-empty")
 
     ExGames.Rooms.stop(room_id)
+  end
+
+  test "детали комнаты: форма set_state — успех и некорректный JSON", %{conn: conn, admin: admin} do
+    ExGames.Matchmaker.define_room("admin_test", ExGamesWeb.Test.Room)
+    {:ok, reservation} = ExGames.Matchmaker.create("admin_test", %{"user_id" => admin.id}, %{})
+    room_id = reservation.room_id
+
+    {:ok, view, _html} = admin_conn(conn, admin) |> live("/admin/rooms/#{room_id}")
+
+    # комната без схем состояния — любой JSON-объект проходит
+    assert has_element?(view, "#set-state-form")
+
+    view
+    |> element("#set-state-form")
+    |> render_submit(%{"set_state" => %{"doc" => ~s({"x": 1})}})
+
+    assert render(view) =~ "Состояние отправлено в комнату"
+
+    assert eventually(fn ->
+             match?({:ok, %{"x" => 1}}, ExGames.Room.Server.state_snapshot(room_id))
+           end)
+
+    # сломанный JSON — ошибка, состояние не меняется
+    view
+    |> element("#set-state-form")
+    |> render_submit(%{"set_state" => %{"doc" => "{oops"}})
+
+    assert render(view) =~ "Некорректный JSON"
+
+    ExGames.Rooms.stop(room_id)
+  end
+
+  defp eventually(fun, timeout \\ 2000) do
+    deadline = System.monotonic_time(:millisecond) + timeout
+    do_eventually(fun, deadline)
+  end
+
+  defp do_eventually(fun, deadline) do
+    if fun.() do
+      :ok
+    else
+      if System.monotonic_time(:millisecond) >= deadline,
+        do: flunk("eventually condition not met")
+
+      Process.sleep(10)
+      do_eventually(fun, deadline)
+    end
   end
 
   test "комнаты: фильтры по типу, статусу и поиск", %{conn: conn, admin: admin} do

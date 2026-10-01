@@ -260,7 +260,7 @@ haxe example.hxml && neko bin/example.n   # чат-пример
 ### Имитация лагов (dev)
 
 `gamessa.debug.LatencyTransport` — обёртка над транспортом с задержкой,
-джиттером и потерей кадров (аналог `latencySimulation` в Colyseus).
+джиттером и потерей кадров (dev-симуляция плохой сети).
 Подставляется точкой `connectRoom`, так что лаги действуют с первого кадра:
 
 ```haxe
@@ -277,5 +277,5 @@ var room = client.connectRoom(res,
 ## Протокол
 
 Полная спецификация — `doc/PROTOCOL.md` в корне репозитория. Кадры:
-`[opcode u8][msgpack]`; опкоды совместимы с Colyseus (JOIN_ROOM=10 …
+`[opcode u8][msgpack]`; опкоды фиксированы (JOIN_ROOM=10 …
 ROOM_RESPONSE=22).

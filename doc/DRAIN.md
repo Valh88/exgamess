@@ -1,6 +1,6 @@
 # Плановое выключение: drain, healthz/readyz
 
-Как нода ExGames вежливо гасится (graceful shutdown, как в Colyseus) и как
+Как нода ExGames вежливо гасится (graceful shutdown) и как
 инфраструктура — балансировщик, Docker, оркестратор — узнаёт, жива ли нода
 и принимает ли она игроков. Коды закрытия и кадры протокола —
 [PROTOCOL.md](PROTOCOL.md); архитектура — [ARCHITECTURE.md](ARCHITECTURE.md).

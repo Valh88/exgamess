@@ -1,6 +1,6 @@
 defmodule ExGames.Rooms.Lobby do
   @moduledoc """
-  Лобби-комната (аналог LobbyRoom в Colyseus): при входе клиент получает
+  Лобби-комната: при входе клиент получает
   полный листинг комнат, далее — дельты `room_add` / `room_update` /
   `room_remove`.
 

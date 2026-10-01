@@ -56,6 +56,8 @@ defmodule ExGamesWebWeb.Admin.DashboardLive do
       end)
       |> Enum.sort_by(& &1.name)
 
+    %{counters: counters, gauges: gauges} = ExGames.Telemetry.snapshot()
+
     assign(socket,
       users_total: users_total(),
       online: map_size(ExGames.Presence.list_online()),
@@ -63,8 +65,26 @@ defmodule ExGamesWebWeb.Admin.DashboardLive do
       clients: Enum.sum(Enum.map(listings, & &1.clients)),
       draining: ExGames.Runtime.Drain.draining?(),
       types: counts_by_type,
-      unlisted: Enum.count(listings, &is_nil(&1.room_name))
+      unlisted: Enum.count(listings, &is_nil(&1.room_name)),
+      metrics: metrics_rows(counters, gauges)
     )
+  end
+
+  # метрики панели: доменные счётчики + gauge'и ноды (все — с последнего
+  # старта ноды; полный снимок — GET /metrics)
+  defp metrics_rows(counters, gauges) do
+    counters =
+      counters
+      |> Enum.reject(fn {name, _} -> String.starts_with?(name, "room.message") end)
+      |> Enum.map(fn {name, value} -> %{name: name, value: value} end)
+
+    gauges =
+      gauges
+      |> Enum.take(12)
+      |> Enum.map(fn {name, value} -> %{name: name, value: value} end)
+
+    (counters ++ gauges)
+    |> Enum.sort_by(& &1.name)
   end
 
   defp users_total, do: ExGames.Account.list_users(page_size: 1).total
@@ -77,8 +97,10 @@ defmodule ExGamesWebWeb.Admin.DashboardLive do
         <div class="flex items-center justify-between">
           <div>
             <h1 class="text-xl font-semibold text-slate-100">Обзор</h1>
+            
             <p class="text-sm text-slate-500">Живое состояние сервера</p>
           </div>
+          
           <div class="flex items-center gap-3">
             <span
               id="drain-status"
@@ -92,15 +114,14 @@ defmodule ExGamesWebWeb.Admin.DashboardLive do
                 "size-1.5 rounded-full",
                 @draining && "bg-rose-400 animate-pulse",
                 !@draining && "bg-emerald-400"
-              ]} />
-              {@draining && "Дренаж активен — приём трафика закрыт"}
-              {!@draining && "Приём трафика открыт"}
+              ]} /> {@draining && "Дренаж активен — приём трафика закрыт"} {!@draining &&
+                "Приём трафика открыт"}
             </span>
-            <.admin_button phx-click="drain" kind="danger" disabled={@draining}>Drain</.admin_button>
+             <.admin_button phx-click="drain" kind="danger" disabled={@draining}>Drain</.admin_button>
             <.admin_button phx-click="reset_drain" kind="ghost" disabled={!@draining}>Reset</.admin_button>
           </div>
         </div>
-
+        
         <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <.stat_card
             label="Пользователи"
@@ -126,7 +147,7 @@ defmodule ExGamesWebWeb.Admin.DashboardLive do
             navigate={~p"/admin/rooms"}
           />
         </div>
-
+        
         <.panel
           title="Типы комнат"
           subtitle="Matchmaker.define_room: определено → живых комнат сейчас"
@@ -140,13 +161,35 @@ defmodule ExGamesWebWeb.Admin.DashboardLive do
             <:col :let={t} label="Тип">
               <span class="font-mono text-indigo-300">{t.name}</span>
             </:col>
+            
             <:col :let={t} label="Живых комнат">
               <span class="tabular-nums">{t.live}</span>
             </:col>
           </.admin_table>
+          
           <p :if={@unlisted > 0} class="mt-3 text-xs text-slate-500">
             ещё {@unlisted} комнат без типа (созданы по room_id, не публикуются в листинге)
           </p>
+        </.panel>
+        
+        <.panel
+          title="Метрики ноды"
+          subtitle="Счётчики событий и gauge'и с последнего старта; полный снимок — GET /metrics"
+        >
+          <.admin_table
+            id="node-metrics"
+            rows={@metrics}
+            row_id={fn m -> "metric-#{m.name}" end}
+            empty="Метрик пока нет"
+          >
+            <:col :let={m} label="Метрика">
+              <span class="font-mono text-xs text-indigo-300">{m.name}</span>
+            </:col>
+            
+            <:col :let={m} label="Значение">
+              <span class="tabular-nums">{m.value}</span>
+            </:col>
+          </.admin_table>
         </.panel>
       </div>
     </Layouts.admin>

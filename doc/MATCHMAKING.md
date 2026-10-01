@@ -8,7 +8,7 @@
 
 ## 1. Модель: двухфазный вход
 
-Как в Colyseus, вход в игру — два шага:
+Вход в игру — два шага:
 
 ```
 1. HTTP:  POST /api/matchmake/…  →  бронь места (room_id + session_id, TTL 15с)
@@ -177,13 +177,16 @@ config :ex_games, :rank_source, ExGames.Account.RankSource
 ## 4. Reconnect после обрыва
 
 Обрыв без кадра `LEAVE_ROOM` не удаляет игрока: комната держит сессию в
-слоте reconnection `reconnect_ttl` (30с по умолчанию). Клиент:
+слоте reconnection `reconnect_ttl` (30с по умолчанию). Отправленные за
+окно обрыва кадры (`ROOM_DATA`, дельты) буферизуются сервером (до 256 на
+клиента) и доигрываются при переподключении — перед снапшотом состояния,
+сохраняя порядок. Клиент:
 
 1. `POST /api/matchmake/reconnect/:room_id` —
    `{"session_id": "…", "reconnection_token": "…"}` → `session_id`
    (токен самодостаточен, `session_id` можно опустить);
 2. `WS /ws/:room_id?sessionId=…&reconnectionToken=…` → `JOIN_ROOM`
-   с **новым** токеном (ротация как в Colyseus) + полный снапшот
+   с **новым** токеном (ротация) + полный снапшот
    `ROOM_STATE`. Логики повторный join не получают.
 
 Исчерпание попыток → `onLeave(4003)`. Окончательный отказ
@@ -196,9 +199,9 @@ config :ex_games, :rank_source, ExGames.Account.RankSource
 
 ## 5. Листинг комнат (внутри)
 
-«Таблицы матчмейкинга» в БД нет — и у Colyseus её нет: листинг живых
-комнат — это эфемерное состояние. У Colyseus это driver (`LocalDriver` —
-массив в памяти; Redis/Mongo — только для multi-node); у нас — ETS-таблица
+«Таблицы матчмейкинга» в БД нет: листинг живых комнат — эфемерное
+состояние (в рамках ноды — таблица в памяти; Redis/Mongo — вариант для
+multi-node). У нас — ETS-таблица
 `:ex_games_matchmaker_rooms` под управлением `Matchmaker`:
 
 * запись создаётся при создании комнаты, `clients` обновляется на

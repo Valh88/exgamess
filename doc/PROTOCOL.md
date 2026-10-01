@@ -2,7 +2,7 @@
 
 Спецификация для клиентов на любом языке (Haxe, C++, Rust, C#, JS...).
 Транспорт — HTTP (JSON) + WebSocket (бинарные кадры). Коды операций
-совместимы с Colyseus, что упрощает будущий Colyseus-совместимый адаптер.
+фиксированы; развитие протокола — только новыми кодами.
 
 ## Конвенции msgpack (важно для Haxe)
 
@@ -119,13 +119,13 @@ GET ws://host:port/ws/:room_id?sessionId=:session_id&reconnectionToken=:token
 | 22 | `ROOM_RESPONSE` | сервер → клиент | `{"i": <request_id>, "p": <payload>}` |
 
 Клиент после получения `JOIN_ROOM` может отправить свой `JOIN_ROOM` (ack) —
-сервер его игнорирует (совместимость с Colyseus-хендшейком).
+сервер его игнорирует (для совместимости с существующими клиентами).
 
 ### Порядок при входе
 
 1. сервер → `JOIN_ROOM` (10) — `reconnection_token` в payload нужен клиенту
    для переподключения после обрыва (при reconnect клиент получает НОВЫЙ
-   токен — ротация, как в Colyseus)
+   токен — ротация)
 2. сервер → `ROOM_STATE` (14), если у комнаты задано состояние
 3. далее — обычный обмен `ROOM_DATA`
 
@@ -174,7 +174,7 @@ GET ws://host:port/ws/:room_id?sessionId=:session_id&reconnectionToken=:token
 Клиент отправляет `ROOM_REQUEST` со своим `request_id` (уникальный int);
 сервер отвечает `ROOM_RESPONSE` с тем же `request_id` или `ERROR`.
 
-### Коды ошибок ERROR (совместимы с Colyseus)
+### Коды ошибок ERROR
 
 | код | смысл |
 |----:|-------|

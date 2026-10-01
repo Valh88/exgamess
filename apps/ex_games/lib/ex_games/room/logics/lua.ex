@@ -213,6 +213,11 @@ defmodule ExGames.Room.Logics.Lua do
         end
       end
 
+      @doc false
+      def __state_schema__(logic_state) do
+        ExGames.Room.Logics.Lua.__state_schema__(logic_state)
+      end
+
       @impl true
       def logic_init(_options, room) do
         ExGames.Room.Logics.Lua.base_logic_init(@ex_games_lua_config, room, __MODULE__)
@@ -324,6 +329,24 @@ defmodule ExGames.Room.Logics.Lua do
   # -------------------------------------------------------------------------
   # Диспетчеризация по M.schema (для тонких модулей)
   # -------------------------------------------------------------------------
+
+  @doc """
+  Схема состояния скрипта для гейта set_state в `ExGames.Room.Server`:
+  `{:ok, state_key | nil, M.schema.state}` — либо `:skip` (нет схемы/скрипта).
+  Вызывается сервером комнаты с срезом состояния моста.
+  """
+  def __state_schema__(%{script: script, state_key: state_key} = _logic_state)
+      when is_binary(script) do
+    case schema_cached(script) do
+      {:ok, %{"state" => state_schema}} when is_map(state_schema) ->
+        {:ok, state_key, state_schema}
+
+      _ ->
+        :skip
+    end
+  end
+
+  def __state_schema__(_), do: :skip
 
   @doc "Типы сообщений скрипта из `M.schema.messages` ([] — нет схемы/ошибки)."
   @spec schema_types(String.t()) :: [String.t()]
@@ -439,37 +462,82 @@ defmodule ExGames.Room.Logics.Lua do
   # Возвращает обновлённый срез; ошибка скрипта — телеметрия и :error
   # (комнату не роняем, состояние остаётся прежним).
   defp run(state, handle, fn_name, args) do
-    case LogicServer.call(state.id, fn_name, args) do
-      {:ok, effects} ->
-        case LogicServer.state(state.id) do
-          {:ok, new_state} ->
-            publish_and_apply(state, handle, effects, new_state)
+    started = System.monotonic_time()
 
-          {:error, reason} ->
-            log_lua_error(state, fn_name, reason)
-            :error
-        end
+    result =
+      case LogicServer.call(state.id, fn_name, args) do
+        {:ok, effects} ->
+          case LogicServer.state(state.id) do
+            {:ok, new_state} ->
+              publish_and_apply(state, handle, effects, new_state)
 
-      {:error, reason} ->
-        log_lua_error(state, fn_name, reason)
-        :error
-    end
+            {:error, reason} ->
+              log_lua_error(state, fn_name, reason)
+              :error
+          end
+
+        {:error, reason} ->
+          log_lua_error(state, fn_name, reason)
+          :error
+      end
+
+    :telemetry.execute(
+      [:ex_games, :room, :logic_lua_call],
+      %{
+        count: 1,
+        duration_ms: lua_duration_ms(started)
+      },
+      %{room_id: state.room_id, fn: fn_name}
+    )
+
+    result
   end
+
+  defp lua_duration_ms(started),
+    do: System.convert_time_unit(System.monotonic_time() - started, :native, :microsecond) / 1000
 
   # state_key: документ модуля публикуется в СВОЮ корневую ветку общего
   # состояния (Room.set_state_branch/3) — модули не затирают друг друга.
   # Без state_key документ заменяет корень (прямой режим).
   defp publish_and_apply(state, handle, effects, new_state) do
-    unless new_state == state.last_state do
-      case Map.get(state, :state_key) do
-        nil -> set_state(handle, new_state)
-        key -> ExGames.Room.set_state_branch(handle, key, new_state)
-      end
-    end
-
+    state = publish_state(state, handle, new_state)
     apply_effects(handle, effects)
     {:ok, %{state | last_state: new_state}}
   end
+
+  # Публикация только изменившегося состояния; документ предварительно
+  # проверяется по M.schema.state: нарушивший схему скрипт не роняет
+  # комнату и не портит синхронизацию — публикация пропускается (у клиентов
+  # остаётся прежний стейт), телеметрия + warning; сам скрипт продолжает со
+  # своего стейта. Превалидация здесь — иначе гейт Server'а откатил бы стейт
+  # под ногами у скрипта (у LogicServer документ уже новый).
+  defp publish_state(%{last_state: last} = state, _handle, new_state) when new_state == last,
+    do: state
+
+  defp publish_state(state, handle, new_state) do
+    case ExGames.Room.StateSchema.validate(state_schema_of(state), new_state) do
+      :ok ->
+        case Map.get(state, :state_key) do
+          nil -> set_state(handle, new_state)
+          key -> ExGames.Room.set_state_branch(handle, key, new_state)
+        end
+
+        %{state | last_state: new_state}
+
+      {:error, reason} ->
+        log_lua_error(state, "state_schema", reason)
+        state
+    end
+  end
+
+  defp state_schema_of(%{script: script}) when is_binary(script) do
+    case schema_cached(script) do
+      {:ok, %{"state" => state_schema}} when is_map(state_schema) -> state_schema
+      _ -> nil
+    end
+  end
+
+  defp state_schema_of(_), do: nil
 
   defp apply_effects(_handle, nil), do: :ok
   defp apply_effects(_handle, false), do: :ok

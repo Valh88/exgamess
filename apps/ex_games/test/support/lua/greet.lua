@@ -3,7 +3,7 @@
 M = {}
 
 M.schema = {
-  messages = { "greet", "boom", "kickme" },
+  messages = { "greet", "boom", "kickme", "corrupt" },
   state = {
     players = { map = "number" },
     greets = "number",
@@ -32,6 +32,12 @@ function M.call(fn, args, state)
       return { { "broadcast", "greet", { from = sid, total = state.greets } } }, state
     elseif msg == "boom" then
       error("script explosion", 0)
+    elseif msg == "corrupt" then
+      -- ломает собственное состояние (players: map<number>): мост обязан
+      -- НЕ публиковать его, но комнату не ронять (эффект — маркер того,
+      -- что публикация уже решена)
+      state.players[sid] = "bad"
+      return { { "broadcast", "corrupted", {} } }, state
     elseif msg == "kickme" then
       return { { "kick", sid } }, state
     end

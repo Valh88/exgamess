@@ -3,6 +3,9 @@ M = {}
 
 M.schema = {
   messages = { "ping" },
+  state = {
+    pings = "number",
+  },
 }
 
 function M.init(_args)

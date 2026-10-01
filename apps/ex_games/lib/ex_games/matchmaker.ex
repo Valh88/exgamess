@@ -2,7 +2,7 @@ defmodule ExGames.Matchmaker do
   @moduledoc """
   Матчмейкер: реестр типов комнат + листинг живых комнат + брони мест.
 
-  Двухфазный join (по образцу Colyseus):
+  Двухфазный join:
 
       1. `join_or_create(room_name, auth_data, options)` — HTTP-вызов;
          возвращает `%ExGames.Matchmaker.Reservation{}` с `room_id` и

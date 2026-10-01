@@ -176,7 +176,66 @@ defmodule ExGames.RoomLogicsLuaTest do
     assert {:ok, {:room_response, 42, %{"messages" => messages, "state" => _}}} =
              Wire.decode(wait_for(transport, {:room_response, 42}))
 
-    assert Enum.sort(messages) == ["boom", "greet", "kickme"]
+    assert Enum.sort(messages) == ["boom", "corrupt", "greet", "kickme"]
+
+    Rooms.stop(room_id)
+  end
+
+  test "мост: состояние вне схемы не публикуется, комната жива" do
+    {:ok, room_id} = Rooms.start(BridgeRoom)
+    {sid, transport} = join!(room_id)
+    {_sid2, _t2} = join!(room_id)
+    wait_for(transport, {:room_data, "joined"})
+
+    # скрипт ломает players (map<number>) — превалидация моста пропускает
+    # публикацию, но не эффекты и не комнату
+    FakeTransport.send_frame(room_id, sid, Wire.encode(:room_data, {"corrupt", %{}}))
+
+    # маркер-эффект дошёл — решение о публикации к этому моменту принято
+    assert {:ok, {:room_data, "corrupted", %{}}} =
+             Wire.decode(wait_for(transport, {:room_data, "corrupted"}))
+
+    # портящее состояние в комнату не ушло: players[sid] остался от join
+    assert {:ok, %{"players" => %{^sid => 0}, "greets" => 0}} = Server.state_snapshot(room_id)
+
+    # комната продолжает работать: kick выгоняет нарушителя, второй остаётся
+    # (auto-dispose пустой комнаты не срабатывает)
+    FakeTransport.send_frame(room_id, sid, Wire.encode(:room_data, {"kickme", %{}}))
+
+    assert eventually(fn ->
+             {:ok, listing} = Server.listing(room_id)
+             listing.clients == 1
+           end)
+
+    Rooms.stop(room_id)
+  end
+
+  test "гейт set_state: документ вне схемы отбрасывается, валидный применяется" do
+    {:ok, room_id} = Rooms.start(BridgeRoom)
+    {sid, transport} = join!(room_id)
+    wait_for(transport, {:room_data, "joined"})
+
+    assert {:ok, %{nil => schema}} = Server.state_schemas(room_id)
+    assert schema["players"]["map"] == "number"
+
+    handle = %ExGames.Room.Handle{room_id: room_id}
+
+    ExGames.Room.set_state(handle, %{"players" => %{"x" => "wrong"}, "greets" => 1})
+
+    # синхронизация: cast уже обработан (хелпер из гайдлайнов тестов)
+    [{pid, _}] = Registry.lookup(ExGames.RoomRegistry, {:room, room_id})
+    _ = :sys.get_state(pid)
+
+    assert {:ok, %{"players" => %{^sid => 0}, "greets" => 0}} = Server.state_snapshot(room_id)
+
+    ExGames.Room.set_state(handle, %{"players" => %{"x" => 5}, "greets" => 2})
+
+    assert eventually(fn ->
+             match?(
+               {:ok, %{"players" => %{"x" => 5}, "greets" => 2}},
+               Server.state_snapshot(room_id)
+             )
+           end)
 
     Rooms.stop(room_id)
   end
@@ -342,6 +401,30 @@ defmodule ExGames.RoomLogicsLuaTest do
     Rooms.stop(room_id)
   end
 
+  test "state_key: карты схем по веткам, внешняя ветка вне схемы отбрасывается" do
+    {:ok, room_id} = Rooms.start(BranchLua.Room)
+    {sid, transport} = join!(room_id)
+
+    assert {:ok, %{"physics" => physics_schema, "economy" => _}} =
+             Server.state_schemas(room_id)
+
+    assert physics_schema["pings"] == "number"
+
+    FakeTransport.send_frame(room_id, sid, Wire.encode(:room_data, {"ping", %{}}))
+    assert {:ok, {:room_data, "pong", _}} = Wire.decode(wait_for(transport, {:room_data, "pong"}))
+
+    handle = %ExGames.Room.Handle{room_id: room_id}
+
+    ExGames.Room.set_state_branch(handle, "physics", %{"pings" => "not-a-number"})
+
+    [{pid, _}] = Registry.lookup(ExGames.RoomRegistry, {:room, room_id})
+    _ = :sys.get_state(pid)
+
+    assert {:ok, %{"physics" => %{"pings" => 1}}} = Server.state_snapshot(room_id)
+
+    Rooms.stop(room_id)
+  end
+
   # -------------------------------------------------------------------------
   # Request-поток: wildcard-клейза моста → M.call("request", …)
   # -------------------------------------------------------------------------
@@ -366,13 +449,21 @@ defmodule ExGames.RoomLogicsLuaTest do
     {:ok, room_id} = Rooms.start(ReqLua.Room)
     {sid, transport} = join!(room_id)
 
-    FakeTransport.send_frame(room_id, sid, Wire.encode(:room_request, {7, "answer", %{"q" => "hlt"}}))
+    FakeTransport.send_frame(
+      room_id,
+      sid,
+      Wire.encode(:room_request, {7, "answer", %{"q" => "hlt"}})
+    )
 
     assert {:ok, {:room_response, 7, %{"to" => ^sid, "q" => "hlt", "n" => 1}}} =
              Wire.decode(wait_for(transport, {:room_response, 7}))
 
     # второй запрос — счётчик в state скрипта растёт
-    FakeTransport.send_frame(room_id, sid, Wire.encode(:room_request, {8, "answer", %{"q" => "x"}}))
+    FakeTransport.send_frame(
+      room_id,
+      sid,
+      Wire.encode(:room_request, {8, "answer", %{"q" => "x"}})
+    )
 
     assert {:ok, {:room_response, 8, %{"n" => 2}}} =
              Wire.decode(wait_for(transport, {:room_response, 8}))

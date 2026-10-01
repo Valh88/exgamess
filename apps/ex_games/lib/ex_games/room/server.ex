@@ -11,13 +11,16 @@ defmodule ExGames.Room.Server do
     * `client_frame/3` — входящий кадр от клиента;
     * `detach/2` — согласованное отключение;
     * `drop/2` — не-согласованный обрыв транспорта (клиент попадает в слот
-      reconnection на `:reconnect_ttl`, по умолчанию 30 секунд);
+      reconnection на `:reconnect_ttl`, по умолчанию 30 секунд). Кадры,
+      отправленные клиенту за окно reconnect (broadcast/send_to/дельты),
+      буферизуются (до 256 на клиента) и доигрываются при reattach
+      до снапшота состояния — сообщения не теряются молча;
     * `reattach/4` — повторное подключение транспорта по `reconnection_token`
       (без повторного join в логиках);
     * `reconnect/3` — проверка reconnection-токена (HTTP-шаг reconnect-флоу).
 
   Кадры пушатся транспорту сообщением `{:ex_games_push, frame}`, закрытие —
-  `{:ex_games_closed, code, message}`. Коды закрытия — как в Colyseus:
+  `{:ex_games_closed, code, message}`. Коды закрытия:
   4000 — нормальное закрытие, 4001 — выключение сервера, 4002 — ошибка/кик.
   """
 
@@ -36,6 +39,11 @@ defmodule ExGames.Room.Server do
   require Logger
 
   @reconnect_ttl 30_000
+
+  # Буфер исходящих кадров на клиента в окне reconnect: кадры, отправленные
+  # пока транспорт мёртв, доигрываются при reattach (до снапшота состояния).
+  # Переполнение выкидывает самые старые кадры.
+  @outbox_limit 256
 
   @typedoc "Внутреннее состояние сервера комнаты."
   @type t :: %__MODULE__{
@@ -56,6 +64,8 @@ defmodule ExGames.Room.Server do
           last_sent_state: term() | nil,
           user_state: term(),
           logics: [{module(), term()}],
+          state_schemas: %{optional(term()) => ExGames.Room.StateSchema.schema()},
+          outboxes: %{optional(Id.id()) => [Wire.frame()]},
           tick_timer: reference() | nil,
           last_tick: integer(),
           timers: %{term() => reference()},
@@ -81,6 +91,10 @@ defmodule ExGames.Room.Server do
             last_sent_state: nil,
             user_state: nil,
             logics: [],
+            # схемы состояния логик (state_key | nil → M.schema): гейт set_state
+            state_schemas: %{},
+            # исходящие кадры клиентам в окне reconnect (см. deliver/3)
+            outboxes: %{},
             tick_timer: nil,
             last_tick: 0,
             # Room clock: расписание таймеров по ключам (Handle.send_after/send_interval)
@@ -123,7 +137,7 @@ defmodule ExGames.Room.Server do
   @doc """
   Бронирует место в комнате (двухфазный join, шаг 1). Возвращает
   `:ok` либо `{:error, :locked | :full | :unknown_room}`. Бронь истекает
-  через `ttl` мс (по умолчанию 15 секунд, как в Colyseus).
+  через `ttl` мс (по умолчанию 15 секунд).
   """
   @spec reserve_seat(Id.id(), Id.id(), term(), map(), non_neg_integer() | :default) ::
           :ok | {:error, :locked | :full | :unknown_room}
@@ -151,8 +165,8 @@ defmodule ExGames.Room.Server do
   Возвращает транспорт клиента после не-согласованного обрыва (шаг 2
   reconnect-флоу). Токен должен совпадать со слотом reconnection; `session_id`
   клиента сохраняется, логики НЕ получают join повторно. Клиенту уходит
-  `join_room` с НОВЫМ `reconnection_token` (ротация, как в Colyseus) и
-  полный снапшот состояния.
+  `join_room` с НОВЫМ `reconnection_token` (токен ротируется при каждом
+  переподключении) и полный снапшот состояния.
   """
   @spec reattach(Id.id(), Id.id(), pid(), Id.id()) ::
           {:ok, Wire.frame(), Wire.frame() | nil} | {:error, :invalid_token | :unknown_room}
@@ -238,7 +252,51 @@ defmodule ExGames.Room.Server do
     :exit, _ -> {:error, :unknown_room}
   end
 
+  @doc """
+  Карты схем состояния логик комнаты (`state_key | nil → M.schema`):
+  валидация set_state до отправки (админ-панель). Пустая карта — схем нет,
+  любой документ проходит.
+  """
+  @spec state_schemas(Id.id()) :: {:ok, %{optional(term()) => term()}} | {:error, :unknown_room}
+  def state_schemas(room_id) do
+    GenServer.call(via(room_id), :state_schemas)
+  catch
+    :exit, _ -> {:error, :unknown_room}
+  end
+
   defp via(room_id), do: Room.via(room_id)
+
+  # Схемы состояния от логик: модуль экспортирует __state_schema__/1
+  # (Lua-мост — из M.schema скрипта) и возвращает {:ok, state_key | nil, schema}.
+  # Две логики с одним ключом (напр. два корня без state_key) конфликтуют —
+  # гейт не знает, чья схема верна, ключ отключается (остаётся валидация в мостах).
+  defp collect_state_schemas(logics) do
+    Enum.reduce(logics, %{}, fn {module, logic_state}, acc ->
+      if function_exported?(module, :__state_schema__, 1) do
+        case module.__state_schema__(logic_state) do
+          {:ok, key, schema} when is_map(schema) ->
+            if Map.has_key?(acc, key), do: Map.delete(acc, key), else: Map.put(acc, key, schema)
+
+          _ ->
+            acc
+        end
+      else
+        acc
+      end
+    end)
+  end
+
+  defp reject_set_state(state, key, reason) do
+    Logger.warning(
+      "[ex_games] set_state отклонён (room #{state.room_id}, key #{inspect(key)}): #{reason}"
+    )
+
+    :telemetry.execute([:ex_games, :room, :set_state_rejected], %{count: 1}, %{
+      room_id: state.room_id,
+      key: key,
+      reason: reason
+    })
+  end
 
   # -------------------------------------------------------------------------
   # Callbacks
@@ -274,6 +332,7 @@ defmodule ExGames.Room.Server do
               metadata: create_options,
               user_state: user_state,
               logics: logics,
+              state_schemas: collect_state_schemas(logics),
               last_tick: System.monotonic_time(:millisecond),
               created_at: DateTime.utc_now() |> DateTime.truncate(:second)
             }
@@ -326,7 +385,7 @@ defmodule ExGames.Room.Server do
                 {:ok, %__MODULE__{} = state} ->
                   # неотправленный дифф уходит текущим клиентам ДО присоединения
                   # новичка (тот получит полный снапшот актуального состояния)
-                  state = flush_state_delta(state)
+                  %__MODULE__{} = state = flush_state_delta(state)
 
                   ref = Process.monitor(pid)
 
@@ -398,10 +457,10 @@ defmodule ExGames.Room.Server do
           {:ok, %Client{} = client} ->
             # подмена транспорта: старый монитор демонтируем, логики не трогаем
             state = drop_monitor(state, session_id)
-            state = flush_state_delta(state)
+            %__MODULE__{} = state = flush_state_delta(state)
             ref = Process.monitor(pid)
 
-            # ротация токена (как в Colyseus): каждое переподключение получает новый
+            # ротация токена: каждое переподключение получает новый
             client = %Client{client | pid: pid, reconnection_token: Id.token()}
 
             state = %__MODULE__{
@@ -419,8 +478,14 @@ defmodule ExGames.Room.Server do
               })
 
             push(pid, join_frame)
+
+            # кадры, накопленные за окно reconnect (seat, broadcast, дельты) —
+            # до снапшота: хронологический порядок «события, затем свежий стейт»
+            {buffered, outboxes} = Map.pop(state.outboxes, session_id)
+            Enum.each(List.wrap(buffered), &push(pid, &1))
+
             state_frame = push_state_snapshot(pid, state)
-            state = %__MODULE__{state | last_sent_state: state.game_state}
+            state = %__MODULE__{state | last_sent_state: state.game_state, outboxes: outboxes}
 
             :telemetry.execute([:ex_games, :room, :rejoin], %{count: map_size(state.clients)}, %{
               room_id: state.room_id,
@@ -461,6 +526,9 @@ defmodule ExGames.Room.Server do
 
   def handle_call(:state_snapshot, _from, %__MODULE__{} = state),
     do: {:reply, {:ok, state.game_state}, state}
+
+  def handle_call(:state_schemas, _from, %__MODULE__{} = state),
+    do: {:reply, {:ok, state.state_schemas}, state}
 
   def handle_call(:list_clients, _from, %__MODULE__{} = state),
     do: {:reply, Map.keys(state.clients), state}
@@ -526,9 +594,10 @@ defmodule ExGames.Room.Server do
   def handle_cast({:broadcast, type, payload}, state) do
     frame = Wire.encode(:room_data, {type, ExGames.Serialization.to_wire(payload)})
 
-    state.clients
-    |> Map.values()
-    |> Enum.each(&push(&1.pid, frame))
+    state =
+      Enum.reduce(state.clients, state, fn {_sid, client}, state ->
+        deliver(state, client, frame)
+      end)
 
     {:noreply, state}
   end
@@ -537,9 +606,12 @@ defmodule ExGames.Room.Server do
     frame = Wire.encode(:room_data, {type, ExGames.Serialization.to_wire(payload)})
     except = MapSet.new(List.wrap(except))
 
-    Enum.each(state.clients, fn {_sid, client} ->
-      unless MapSet.member?(except, client.session_id), do: push(client.pid, frame)
-    end)
+    state =
+      Enum.reduce(state.clients, state, fn {_sid, client}, state ->
+        if MapSet.member?(except, client.session_id),
+          do: state,
+          else: deliver(state, client, frame)
+      end)
 
     {:noreply, state}
   end
@@ -566,20 +638,22 @@ defmodule ExGames.Room.Server do
   def handle_cast({:send_to, session_id, type, payload}, state) do
     case Map.get(state.clients, session_id) do
       nil ->
-        :ok
+        {:noreply, state}
 
       client ->
         frame = Wire.encode(:room_data, {type, ExGames.Serialization.to_wire(payload)})
-        push(client.pid, frame)
+        {:noreply, deliver(state, client, frame)}
     end
-
-    {:noreply, state}
   end
 
   def handle_cast({:kick, session_id}, state) do
     case Map.get(state.clients, session_id) do
-      nil -> {:noreply, state}
-      client -> remove_client(state, client, :kick, 4002, "kicked")
+      nil ->
+        {:noreply, state}
+
+      client ->
+        :telemetry.execute([:ex_games, :room, :kick], %{count: 1}, %{room_id: state.room_id})
+        remove_client(state, client, :kick, 4002, "kicked")
     end
   end
 
@@ -601,14 +675,31 @@ defmodule ExGames.Room.Server do
     {:noreply, state}
   end
 
-  def handle_cast({:set_state, wire_state}, %__MODULE__{} = state),
-    do: {:noreply, %__MODULE__{state | game_state: wire_state, state_dirty: true}}
+  def handle_cast({:set_state, wire_state}, %__MODULE__{} = state) do
+    case ExGames.Room.StateSchema.validate_root(state.state_schemas, wire_state) do
+      :ok ->
+        :telemetry.execute([:ex_games, :room, :set_state], %{count: 1}, %{room_id: state.room_id})
+        {:noreply, %__MODULE__{state | game_state: wire_state, state_dirty: true}}
+
+      {:error, reason} ->
+        reject_set_state(state, nil, reason)
+        {:noreply, state}
+    end
+  end
 
   # ветка общего состояния (мульти-модули): game_state[key] = doc,
   # остальные ветки не трогаем
   def handle_cast({:set_state_branch, key, wire_doc}, %__MODULE__{} = state) do
-    game_state = Map.put(state.game_state || %{}, key, wire_doc)
-    {:noreply, %__MODULE__{state | game_state: game_state, state_dirty: true}}
+    case ExGames.Room.StateSchema.validate(Map.get(state.state_schemas, key), wire_doc) do
+      :ok ->
+        :telemetry.execute([:ex_games, :room, :set_state], %{count: 1}, %{room_id: state.room_id})
+        game_state = Map.put(state.game_state || %{}, key, wire_doc)
+        {:noreply, %__MODULE__{state | game_state: game_state, state_dirty: true}}
+
+      {:error, reason} ->
+        reject_set_state(state, key, reason)
+        {:noreply, state}
+    end
   end
 
   def handle_cast({:client_left, session_id, :closed}, state) do
@@ -862,8 +953,20 @@ defmodule ExGames.Room.Server do
   end
 
   defp dispatch_message(%__MODULE__{} = state, client, type, payload) do
-    :telemetry.execute([:ex_games, :room, :message], %{count: 1}, %{room_id: state.room_id})
+    started = System.monotonic_time()
+    result = dispatch_message_body(state, client, type, payload)
 
+    duration_ms =
+      System.convert_time_unit(System.monotonic_time() - started, :native, :microsecond) / 1000
+
+    :telemetry.execute([:ex_games, :room, :message], %{count: 1, duration_ms: duration_ms}, %{
+      room_id: state.room_id
+    })
+
+    result
+  end
+
+  defp dispatch_message_body(%__MODULE__{} = state, client, type, payload) do
     # роутинг по объявленным типам: сначала встроенные логики, потом сама комната
     case logic_for_message(state, type) do
       {mod, logic_state} ->
@@ -1020,7 +1123,8 @@ defmodule ExGames.Room.Server do
     state = %__MODULE__{
       state
       | clients: Map.delete(state.clients, client.session_id),
-        rate: Map.delete(state.rate, client.session_id)
+        rate: Map.delete(state.rate, client.session_id),
+        outboxes: Map.delete(state.outboxes, client.session_id)
     }
 
     push_close(client.pid, close_code, message)
@@ -1048,7 +1152,7 @@ defmodule ExGames.Room.Server do
     auto_dispose(state)
   end
 
-  # Colyseus-поведение: комната без клиентов и без броней закрывается.
+  # Поведение по умолчанию: комната без клиентов и без броней закрывается.
   # auto_dispose_ms > 0 откладывает закрытие на льготное окно — таймер
   # :dispose_if_empty; новый клиент или бронь отменяют его (см. ниже),
   # при срабатывании пустота перепроверяется.
@@ -1240,6 +1344,7 @@ defmodule ExGames.Room.Server do
   # Дельта-режим (:state_sync == :delta): неотправленный дифф уходит текущим
   # клиентам до подключения новичка — новичку затем уходит полный снапшот
   # того же состояния (все клиенты сходятся к одному base).
+  @spec flush_state_delta(%__MODULE__{}) :: %__MODULE__{}
   defp flush_state_delta(%__MODULE__{} = state) do
     cond do
       state_sync(state) != :delta or is_nil(state.game_state) or is_nil(state.last_sent_state) ->
@@ -1253,7 +1358,7 @@ defmodule ExGames.Room.Server do
             %{state | last_sent_state: state.game_state}
 
           _ ->
-            push_all(state, Wire.encode(:room_state_patch, %{"ops" => ops}))
+            state = push_all(state, Wire.encode(:room_state_patch, %{"ops" => ops}))
             %{state | last_sent_state: state.game_state}
         end
     end
@@ -1261,12 +1366,13 @@ defmodule ExGames.Room.Server do
 
   defp broadcast_state_if_dirty(%__MODULE__{state_dirty: true, game_state: game_state} = state)
        when not is_nil(game_state) do
-    case push_state_update(state) do
-      :skipped -> :noop
-      frame -> push_all(state, frame)
-    end
+    state =
+      case push_state_update(state) do
+        :skipped -> state
+        frame -> push_all(state, frame)
+      end
 
-    %__MODULE__{state | state_dirty: false, last_sent_state: game_state}
+    %{state | state_dirty: false, last_sent_state: game_state}
   end
 
   defp broadcast_state_if_dirty(state), do: state
@@ -1286,12 +1392,11 @@ defmodule ExGames.Room.Server do
     end
   end
 
+  @spec push_all(%__MODULE__{}, Wire.frame()) :: %__MODULE__{}
   defp push_all(%__MODULE__{} = state, frame) do
-    state.clients
-    |> Map.values()
-    |> Enum.each(&push(&1.pid, frame))
-
-    :ok
+    Enum.reduce(state.clients, state, fn {_sid, client}, state ->
+      deliver(state, client, frame)
+    end)
   end
 
   defp state_sync(state), do: Keyword.get(state.options, :state_sync, :snapshot)
@@ -1317,6 +1422,29 @@ defmodule ExGames.Room.Server do
 
   defp push(pid, frame) when is_pid(pid), do: send(pid, {:ex_games_push, frame})
   defp push(_pid, _frame), do: :ok
+
+  # Кадр живому клиенту. В окне reconnect (транспорт умер, слот активен)
+  # push в мёртвый pid теряет кадр молча — вместо этого кадр буферизуется
+  # и доигрывается при reattach (перед снапшотом состояния).
+  @spec deliver(%__MODULE__{}, Client.t(), Wire.frame()) :: %__MODULE__{}
+  defp deliver(%__MODULE__{} = state, %Client{} = client, frame) do
+    if Map.has_key?(state.reconnecting, client.reconnection_token) do
+      buffer = Map.get(state.outboxes, client.session_id, [])
+
+      %__MODULE__{
+        state
+        | outboxes:
+            Map.put(
+              state.outboxes,
+              client.session_id,
+              Enum.take(buffer ++ [frame], -@outbox_limit)
+            )
+      }
+    else
+      push(client.pid, frame)
+      state
+    end
+  end
 
   defp push_close(pid, code, message), do: send(pid, {:ex_games_closed, code, message})
 

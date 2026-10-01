@@ -283,7 +283,7 @@ class Room<S> {
 
 			case RoomStatePatch(payload):
 				// дельта: применяем операции к анонимному дереву состояния;
-				// onStateChange срабатывает на каждый патч (как в Colyseus)
+				// onStateChange срабатывает на каждый патч
 				state = cast StatePatch.applyAnon(state, payload);
 				onStateChange.dispatch(state);
 

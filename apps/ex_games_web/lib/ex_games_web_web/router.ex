@@ -39,6 +39,11 @@ defmodule ExGamesWebWeb.Router do
     get "/readyz", HealthController, :readyz
   end
 
+  # Метрики для скрейпера (без auth: агрегаты ноды, без персональных данных).
+  scope "/metrics", ExGamesWebWeb do
+    get "/", MetricsController, :show
+  end
+
   # Игровой JSON API: только с Bearer-токеном.
   scope "/api", ExGamesWebWeb do
     pipe_through [:api, :require_auth]

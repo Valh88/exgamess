@@ -1,6 +1,6 @@
 defmodule ExGames.Rooms.Chat do
   @moduledoc """
-  Чат-комната (по образцу RelayRoom в Colyseus): re-broadcast сообщений
+  Чат-комната: re-broadcast сообщений
   канала + история последних сообщений.
 
   Каналы чата — обычные комнаты, создаваемые через матчмейкер:

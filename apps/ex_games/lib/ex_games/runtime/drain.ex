@@ -1,6 +1,6 @@
 defmodule ExGames.Runtime.Drain do
   @moduledoc """
-  Плановое опустошение ноды (graceful shutdown, как в Colyseus).
+  Плановое опустошение ноды (graceful shutdown).
 
   Вызывается при остановке приложения (хук `prep_stop/1` веб-приложения,
   до гашения supervision tree):
