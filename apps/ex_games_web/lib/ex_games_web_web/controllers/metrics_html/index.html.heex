@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="refresh" content="5" />
+    <title>Метрики ноды · ExGames</title>
+    <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
+  </head>
+  <body class="min-h-screen bg-zinc-950 text-zinc-200 antialiased">
+    <main class="mx-auto max-w-5xl px-4 py-10 sm:px-6">
+      <header class="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 class="text-2xl font-semibold tracking-tight text-white">Метрики ноды</h1>
+          <p class="mt-1 text-sm text-zinc-400">
+            {@node} · снимок {@taken_at}
+          </p>
+        </div>
+        <span class="inline-flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-900/60 px-3 py-1 text-xs text-zinc-400">
+          <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span> автообновление 5 с
+        </span>
+      </header>
+
+      <div class="mt-8 grid gap-6 lg:grid-cols-2">
+        <div class="lg:col-span-2">
+          <.metric_card
+            title="Счётчики"
+            subtitle="с последнего старта ноды"
+          >
+            <%= if @counters == [] do %>
+              <p class="px-2 py-2 text-xs text-zinc-500">Событий пока не было.</p>
+            <% end %>
+            <.metric_row
+              :for={{name, value} <- @counters}
+              name={name}
+              value={ExGamesWebWeb.MetricsHTML.format_value(name, value)}
+            />
+          </.metric_card>
+        </div>
+
+        <.metric_card
+          title="Длительности обработчиков"
+          subtitle="мс, последнее значение"
+        >
+          <%= if @durations == [] do %>
+            <p class="px-2 py-2 text-xs text-zinc-500">Обработчиков ещё не вызывали.</p>
+          <% end %>
+          <.metric_row
+            :for={{name, value} <- @durations}
+            name={name}
+            value={ExGamesWebWeb.MetricsHTML.format_value(name, value)}
+          />
+        </.metric_card>
+
+        <.metric_card title="Состояние ноды">
+          <.metric_row
+            :for={{name, value} <- @node_gauges}
+            name={name}
+            value={ExGamesWebWeb.MetricsHTML.format_value(name, value)}
+          />
+        </.metric_card>
+      </div>
+    </main>
+  </body>
+</html>

@@ -403,4 +403,21 @@ defmodule ExGamesWebWeb.AdminLiveTest do
 
     assert render(view) =~ "ann"
   end
+
+  # -------------------------------------------------------------------------
+  # Метрики
+  # -------------------------------------------------------------------------
+
+  test "метрики: счётчики, длительности и состояние ноды", %{conn: conn, admin: admin} do
+    :telemetry.execute([:ex_games, :room, :created], %{}, %{room_id: "x", module: __MODULE__})
+    ExGames.Telemetry.sample()
+
+    {:ok, view, _html} = admin_conn(conn, admin) |> live("/admin/metrics")
+
+    assert has_element?(view, "#metrics-counters")
+    assert has_element?(view, "#metrics-durations")
+    assert has_element?(view, "#metrics-node")
+    assert has_element?(view, "#metric-counter-room-created")
+    assert has_element?(view, "#metric-node-node-process_count")
+  end
 end

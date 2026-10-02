@@ -9,7 +9,8 @@ defmodule ExGamesWebWeb.Admin.Nav do
     %{label: "Обзор", path: "/admin", icon: "hero-squares-2x2"},
     %{label: "Пользователи", path: "/admin/users", icon: "hero-users"},
     %{label: "Комнаты", path: "/admin/rooms", icon: "hero-server-stack"},
-    %{label: "Онлайн", path: "/admin/online", icon: "hero-signal"}
+    %{label: "Онлайн", path: "/admin/online", icon: "hero-signal"},
+    %{label: "Метрики", path: "/admin/metrics", icon: "hero-chart-bar"}
   ]
 
   @spec items() :: [%{label: String.t(), path: String.t(), icon: String.t()}]

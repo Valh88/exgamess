@@ -39,7 +39,8 @@ defmodule ExGamesWebWeb.Router do
     get "/readyz", HealthController, :readyz
   end
 
-  # Метрики для скрейпера (без auth: агрегаты ноды, без персональных данных).
+  # Визуальная страница метрик (без auth: агрегаты ноды, без персональных
+  # данных; вне :browser — сессия и flash не нужны).
   scope "/metrics", ExGamesWebWeb do
     get "/", MetricsController, :show
   end
@@ -102,6 +103,7 @@ defmodule ExGamesWebWeb.Router do
       live "/rooms", RoomIndexLive, :index
       live "/rooms/:id", RoomShowLive, :show
       live "/online", OnlineLive, :index
+      live "/metrics", MetricsLive, :index
     end
   end
 

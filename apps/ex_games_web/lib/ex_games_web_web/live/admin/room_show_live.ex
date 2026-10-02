@@ -158,22 +158,22 @@ defmodule ExGamesWebWeb.Admin.RoomShowLive do
         >
           <.icon name="hero-arrow-left" class="size-4" /> Все комнаты
         </.link>
-        
+
         <div class="flex items-center justify-between">
           <div>
             <h1 class="font-mono text-xl font-semibold text-indigo-300">{@room_id}</h1>
-            
+
             <p class="text-sm text-slate-500">
               {@listing.module} · {@listing.clients}/{@listing.max_clients} клиентов ·
               создана {@listing.created_at |> Calendar.strftime("%d.%m.%Y %H:%M")}
             </p>
           </div>
-          
+
           <.badge tone={(@listing.locked && "amber") || "green"}>
             {(@listing.locked && "закрыта") || "открыта"}
           </.badge>
         </div>
-        
+
         <.panel title="Клиенты" subtitle="session_id · user_id (из auth) · вход · RTT">
           <.admin_table
             id="room-clients"
@@ -184,17 +184,17 @@ defmodule ExGamesWebWeb.Admin.RoomShowLive do
             <:col :let={c} label="Session">
               <span class="font-mono text-xs text-slate-300">{c.session_id}</span>
             </:col>
-            
+
             <:col :let={c} label="User ID">
               <span class="tabular-nums">{c.user_id || "—"}</span>
             </:col>
-            
+
             <:col :let={c} label="Вошёл"><.datetime dt={c.joined_at} /></:col>
-            
+
             <:col :let={c} label="RTT">
               <span class="tabular-nums">{(c.rtt && "#{c.rtt} мс") || "—"}</span>
             </:col>
-            
+
             <:action :let={c}>
               <.admin_button phx-click="kick" phx-value-sid={c.session_id} kind="danger">
                 Кик
@@ -202,7 +202,7 @@ defmodule ExGamesWebWeb.Admin.RoomShowLive do
             </:action>
           </.admin_table>
         </.panel>
-        
+
         <.panel
           title="Состояние (set_state)"
           subtitle="Снимок синхронизируемого wire-документа"
@@ -216,25 +216,25 @@ defmodule ExGamesWebWeb.Admin.RoomShowLive do
           <p :if={!@snapshot} id="room-state-empty" class="text-sm text-slate-500">
             Логика ещё не публиковала состояние (set_state).
           </p>
-          
+
           <details :if={map_size(@schemas) > 0} class="mt-3" id="room-state-schema-details">
             <summary class="cursor-pointer select-none text-xs text-slate-500 transition-colors hover:text-slate-300">
               Схема состояния логики (M.schema)
             </summary>
-             <pre
+            <pre
               id="room-state-schema"
               phx-no-curly-interpolation
               class="mt-2 max-h-60 overflow-auto rounded-lg border border-slate-800 bg-slate-950 p-3 font-mono text-xs leading-relaxed text-slate-400"
             >{Jason.encode!(@schemas, pretty: true)}</pre>
           </details>
-          
+
           <div class="mt-4 border-t border-slate-800 pt-4" id="set-state-block">
             <h3 class="text-sm font-medium text-slate-200">Установить состояние</h3>
-            
+
             <p class="mt-1 text-xs text-slate-500">
               JSON-документ; проверяется по схеме логики до отправки, отклонённый — не применяется.
             </p>
-            
+
             <.form
               for={set_state_form()}
               id="set-state-form"
