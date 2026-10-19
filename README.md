@@ -17,6 +17,12 @@ Phoenix 1.8: аккаунты и RBAC, матчмейкинг с двухфаз�
 | `apps/arena_example` | демо-игра: полный цикл от регистрации до матча 2×2 |
 | `sdk/gamessa` | Haxe-клиентский SDK (JS + HashLink): msgpack, wire, Room, reconnect |
 
+Библиотечная часть — `apps/ex_games*` и `sdk/gamessa` (плюс `apps/arena_example`
+как образец). Потребительские игры живут рядом в `apps/` (сейчас —
+`apps/extract_pro`, игра ExtractPro2D): они зависят от библиотеки, но её
+не расширяют и **в git библиотеки не входят** (локальный каталог, в
+`.gitignore`; клиент игры — в репозитории самой игры).
+
 ## Быстрый старт
 
 ```bash
