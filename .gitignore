@@ -33,3 +33,4 @@ erl_crash.dump
 .zcodeignore
 sdk/gamessa/.gamessa_storage.json
 mix_pubsub_user0/
+apps/extract_pro/
