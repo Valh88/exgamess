@@ -2,7 +2,6 @@ package gamessa;
 
 import gamessa.transport.ITransport;
 import gamessa.transport.TransportClose;
-import gamessa.transport.WebSocketTransport;
 import gamessa.util.Signal;
 import gamessa.wire.Frame;
 import gamessa.wire.Wire;
@@ -126,9 +125,9 @@ class Room<S> {
 	public function new(client:Client, reservation:SeatReservation, ?transport:ITransport) {
 		this.client = client;
 		this.reservation = reservation;
-		this.connection = transport != null
-			? transport
-			: new WebSocketTransport(client.roomWsUrl(reservation.roomId, reservation.sessionId), client.verifyCert);
+		// транспорт по умолчанию выбирает клиент: выделенный WS или канал
+		// общего сокета gateway (режим useGateway)
+		this.connection = transport != null ? transport : client.defaultRoomTransport(reservation);
 		attach();
 	}
 
@@ -338,6 +337,9 @@ class Room<S> {
 
 			case LeaveRoom:
 				// сервер подтверждает выход — закрытие придёт отдельно
+
+			case RoomEnter(_) | Mux(_, _) | MuxClosed(_, _, _):
+				// gateway-кадры адресованы Gateway/MuxChannel, в Room не приходят
 		}
 	}
 
@@ -417,7 +419,10 @@ class Room<S> {
 	}
 
 	function openReconnectTransport(res:SeatReservation):Void {
-		connection = new WebSocketTransport(client.roomWsUrl(roomId, res.sessionId, res.reconnectionToken), client.verifyCert);
+		// режим транспорта выбирает клиент: в режиме gateway при живом общем
+		// сокете reconnect идёт каналом на нём (HTTP-шаг уже подтвердил токен),
+		// иначе — выделенный WS
+		connection = client.reconnectTransport(res, roomId);
 		attach();
 	}
 

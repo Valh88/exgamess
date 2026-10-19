@@ -19,6 +19,11 @@ defmodule ExGamesWeb.Test.WsClient do
     GenServer.start_link(__MODULE__, {base, room_id, session_id, reconnection_token})
   end
 
+  @doc "Подключение к мультиплексированному сокету /ws (вход — кадрами room_enter)."
+  def start_gateway_link(base) do
+    GenServer.start_link(__MODULE__, {:gateway, base})
+  end
+
   def stop(client), do: GenServer.stop(client, :normal)
 
   def send_binary(client, frame) do
@@ -127,14 +132,23 @@ defmodule ExGamesWeb.Test.WsClient do
   # -------------------------------------------------------------------------
 
   @impl true
+  def init({:gateway, base}) do
+    connect(base, "/ws")
+  end
+
   def init({base, room_id, session_id, reconnection_token}) do
-    uri = URI.parse(base)
     path = "/ws/#{room_id}?sessionId=#{session_id}"
 
     path =
       if reconnection_token,
         do: path <> "&reconnectionToken=#{reconnection_token}",
         else: path
+
+    connect(base, path)
+  end
+
+  defp connect(base, path) do
+    uri = URI.parse(base)
 
     with {:ok, conn} <- Mint.HTTP.connect(:http, uri.host, uri.port),
          {:ok, conn, ref} <- Mint.WebSocket.upgrade(:ws, conn, path, []),

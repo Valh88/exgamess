@@ -20,6 +20,9 @@ class Wire {
 	public static inline var OP_PING = 18;
 	public static inline var OP_ROOM_REQUEST = 21;
 	public static inline var OP_ROOM_RESPONSE = 22;
+	public static inline var OP_ROOM_ENTER = 23;
+	public static inline var OP_MUX = 25;
+	public static inline var OP_MUX_CLOSED = 26;
 
 	// Коды ошибок протокола.
 	public static inline var ERR_UNKNOWN_ROOM_TYPE = 520;
@@ -69,6 +72,20 @@ class Wire {
 				out.add(MsgPack.encode(m));
 			case RoomResponse(requestId, payload):
 				out.add(MsgPack.encode(map2("i", requestId, "p", payload)));
+			case RoomEnter(data):
+				out.add(MsgPack.encode(data));
+			case Mux(roomId, frame):
+				// внутренний кадр уходит как есть (Bytes → msgpack bin)
+				var m = new StringMap<Dynamic>();
+				m.set("r", roomId);
+				m.set("f", frame);
+				out.add(MsgPack.encode(m));
+			case MuxClosed(roomId, code, message):
+				var m = new StringMap<Dynamic>();
+				m.set("r", roomId);
+				m.set("code", code);
+				m.set("message", message);
+				out.add(MsgPack.encode(m));
 		}
 
 		return out.getBytes();
@@ -119,11 +136,19 @@ class Wire {
 			case OP_ROOM_REQUEST:
 				var m = checkMap(payload, op);
 				return RoomRequest(m.get("i"), m.get("t"), m.get("p"));
-			case OP_ROOM_RESPONSE:
-				var m = checkMap(payload, op);
-				return RoomResponse(m.get("i"), m.get("p"));
-			case _:
-				throw new WireError('unknown opcode $op');
+		case OP_ROOM_RESPONSE:
+			var m = checkMap(payload, op);
+			return RoomResponse(m.get("i"), m.get("p"));
+		case OP_ROOM_ENTER:
+			return RoomEnter(checkMap(payload, op));
+		case OP_MUX:
+			var m = checkMap(payload, op);
+			return Mux(m.get("r"), muxFrame(m.get("f"), op));
+		case OP_MUX_CLOSED:
+			var m = checkMap(payload, op);
+			return MuxClosed(m.get("r"), m.get("code"), m.get("message"));
+		case _:
+			throw new WireError('unknown opcode $op');
 		}
 	}
 
@@ -138,7 +163,20 @@ class Wire {
 			case Ping(_): OP_PING;
 			case RoomRequest(_, _, _): OP_ROOM_REQUEST;
 			case RoomResponse(_, _): OP_ROOM_RESPONSE;
+			case RoomEnter(_): OP_ROOM_ENTER;
+			case Mux(_, _): OP_MUX;
+			case MuxClosed(_, _, _): OP_MUX_CLOSED;
 		};
+	}
+
+	// внутренний кадр конверта: msgpack bin приходит как Bytes; str-закодированный
+	// внутренний кадр (валидный utf-8) — как String, нормализуем
+	static function muxFrame(f: Dynamic, op: Int): Bytes {
+		if (Std.isOfType(f, Bytes))
+			return f;
+		if (Std.isOfType(f, String))
+			return Bytes.ofString(f);
+		throw new WireError('mux frame (op $op) payload must be bytes');
 	}
 
 	static function checkMap(payload: Dynamic, op: Int): StringMap<Dynamic> {

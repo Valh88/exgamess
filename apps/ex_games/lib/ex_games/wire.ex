@@ -16,6 +16,9 @@ defmodule ExGames.Wire do
   | 18 | `:ping` | оба направления (без payload — однобайтовый; с payload — эхо для синхронизации времени) |
   | 21 | `:room_request` | клиент → сервер (запрос с request_id) |
   | 22 | `:room_response` | сервер → клиент (ответ на request_id) |
+  | 23 | `:room_enter` | клиент → сервер (gateway: вход в комнату на общем сокете) |
+  | 25 | `:mux` | оба направления (gateway: кадр комнаты `f` в конверте с `r`) |
+  | 26 | `:mux_closed` | сервер → клиент (gateway: канал комнаты закрыт, сокет жив) |
 
   Полная спецификация — `doc/PROTOCOL.md` в корне репозитория.
   """
@@ -31,6 +34,9 @@ defmodule ExGames.Wire do
           | :ping
           | :room_request
           | :room_response
+          | :room_enter
+          | :mux
+          | :mux_closed
 
   @typedoc "Сырой кадр протокола."
   @type frame :: binary()
@@ -48,6 +54,9 @@ defmodule ExGames.Wire do
           | {:room_request, request_id :: non_neg_integer(), type :: String.t() | integer(),
              payload :: term()}
           | {:room_response, request_id :: non_neg_integer(), payload :: term()}
+          | {:room_enter, map()}
+          | {:mux, room_id :: String.t(), frame :: binary()}
+          | {:mux_closed, room_id :: String.t(), code :: integer(), message :: String.t()}
 
   @opcodes %{
     join_room: 10,
@@ -58,7 +67,10 @@ defmodule ExGames.Wire do
     room_state_patch: 15,
     ping: 18,
     room_request: 21,
-    room_response: 22
+    room_response: 22,
+    room_enter: 23,
+    mux: 25,
+    mux_closed: 26
   }
 
   @codes Map.new(@opcodes, fn {name, code} -> {code, name} end)
@@ -111,6 +123,16 @@ defmodule ExGames.Wire do
   def encode(:room_response, {request_id, payload}),
     do: frame(:room_response, %{i: request_id, p: payload})
 
+  def encode(:room_enter, payload),
+    do: frame(:room_enter, payload)
+
+  # Внутренний кадр уходит как есть (bin), без перекодирования
+  def encode(:mux, {room_id, inner_frame}),
+    do: frame(:mux, %{r: room_id, f: %Msgpax.Bin{data: IO.iodata_to_binary(inner_frame)}})
+
+  def encode(:mux_closed, {room_id, code, message}),
+    do: frame(:mux_closed, %{r: room_id, code: code, message: message})
+
   defp frame(opcode, payload) do
     [<<opcode_number(opcode)::8>>, Msgpax.pack!(payload, iodata: true)]
     |> IO.iodata_to_binary()
@@ -156,6 +178,22 @@ defmodule ExGames.Wire do
 
   defp build(:room_response, %{i: i, p: p}) when is_integer(i),
     do: {:room_response, i, p}
+
+  defp build(:room_enter, payload) when is_map(payload), do: {:room_enter, payload}
+
+  # msgpack bin приходит от Msgpax как %Msgpax.Bin{}, от str — как binary;
+  # внутренний кадр допустим в обоих вариантах
+  defp build(:mux, %{"r" => r, "f" => %Msgpax.Bin{data: f}}), do: {:mux, r, f}
+  defp build(:mux, %{"r" => r, "f" => f}) when is_binary(f), do: {:mux, r, f}
+  defp build(:mux, %{r: r, f: %Msgpax.Bin{data: f}}), do: {:mux, r, f}
+  defp build(:mux, %{r: r, f: f}) when is_binary(f), do: {:mux, r, f}
+
+  defp build(:mux_closed, %{"r" => r, "code" => code, "message" => message})
+       when is_integer(code),
+       do: {:mux_closed, r, code, message}
+
+  defp build(:mux_closed, %{r: r, code: code, message: message}) when is_integer(code),
+    do: {:mux_closed, r, code, message}
 
   defp build(_code, _payload), do: raise(ArgumentError, "invalid frame payload")
 end

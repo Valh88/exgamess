@@ -4,8 +4,10 @@ import gamessa.StatePatch;
 import haxe.ds.StringMap;
 import utest.Assert;
 
-class StatePatchTest {
-	public function new() {}
+class StatePatchTest extends utest.Test {
+	public function new() {
+		super();
+	}
 
 	function payload(ops:Array<Dynamic>): StringMap<Dynamic> {
 		var p = new StringMap<Dynamic>();
@@ -75,7 +77,8 @@ class StatePatchTest {
 	}
 
 	function testRootReplace() {
-		var state = tree();
+		// Dynamic: корень может быть заменён на скаляр (op на [])
+		var state:Dynamic = tree();
 		state = StatePatch.apply(state, payload([op([], 42)]));
 
 		Assert.equals(42, state);

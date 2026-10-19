@@ -1,6 +1,7 @@
 package gamessa.wire;
 
 import haxe.ds.StringMap;
+import haxe.io.Bytes;
 
 /**
 	Кадр бинарного протокола ExGames: `[opcode :: u8][msgpack]`.
@@ -45,4 +46,23 @@ enum Frame {
 
 	/** Ответ на request_id (сервер → клиент): {i, p}. */
 	RoomResponse(requestId: Int, payload: Dynamic);
+
+	/**
+		Вход в комнату на общем сокете gateway (клиент → сервер):
+		`{room_id, session_id, reconnection_token?}`. Токен задан — reattach
+		в reconnect-слот, нет — attach по брони. Ответ — `Mux(JoinRoom)`.
+	*/
+	RoomEnter(data: StringMap<Dynamic>);
+
+	/**
+		Кадр комнаты в конверте gateway (оба направления): `r` — room_id,
+		`f` — внутренний кадр протокола как есть (bin), без перекодирования.
+	*/
+	Mux(roomId: String, frame: Bytes);
+
+	/**
+		Канал комнаты закрыт (gateway → клиент): `{r, code, message}` —
+		кик/распад комнаты/отказ входа. Общий сокет при этом жив.
+	*/
+	MuxClosed(roomId: String, code: Int, message: String);
 }

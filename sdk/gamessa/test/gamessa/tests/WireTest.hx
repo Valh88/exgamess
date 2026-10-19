@@ -235,6 +235,74 @@ class WireTest extends utest.Test {
 		Assert.raises(() -> Wire.decode(Bytes.alloc(0)), WireError);
 	}
 
+	function testGatewayFramesRoundtrip() {
+		// RoomEnter: вход по брони
+		var enter = Wire.encode(RoomEnter(mapOf("room_id", "Ab3xYz9Kp", "session_id", "sKd83jdDk2m1")));
+		Assert.equals(Wire.OP_ROOM_ENTER, enter.get(0));
+
+		switch (Wire.decode(enter)) {
+			case RoomEnter(data):
+				Assert.equals("Ab3xYz9Kp", data.get("room_id"));
+				Assert.equals("sKd83jdDk2m1", data.get("session_id"));
+				Assert.equals(null, data.get("reconnection_token"));
+			case _:
+				Assert.fail("expected RoomEnter");
+		}
+
+		// RoomEnter с токеном (reconnect)
+		var reenter = Wire.encode(RoomEnter(mapOf("room_id", "r", "session_id", "s", "reconnection_token", "tok")));
+		switch (Wire.decode(reenter)) {
+			case RoomEnter(data):
+				Assert.equals("tok", data.get("reconnection_token"));
+			case _:
+				Assert.fail("expected RoomEnter");
+		}
+
+		// Mux: внутренний кадр проходит байт-в-байт
+		var inner = Wire.encode(RoomData("move", mapOf("x", 1)));
+		var mux = Wire.encode(Mux("Ab3xYz9Kp", inner));
+		Assert.equals(Wire.OP_MUX, mux.get(0));
+
+		switch (Wire.decode(mux)) {
+			case Mux(roomId, frame):
+				Assert.equals("Ab3xYz9Kp", roomId);
+				Assert.equals(inner.toHex(), frame.toHex());
+				// внутренний кадр декодируется как обычный кадр протокола
+				switch (Wire.decode(frame)) {
+					case RoomData(type, payload):
+						Assert.equals("move", type);
+						var m:StringMap<Dynamic> = payload;
+						Assert.equals(1, m.get("x"));
+					case _:
+						Assert.fail("expected inner RoomData");
+				}
+			case _:
+				Assert.fail("expected Mux");
+		}
+
+		// однобайтовые внутренние кадры тоже переживают конверт
+		var bare = Wire.encode(Mux("r", Wire.encode(LeaveRoom)));
+		switch (Wire.decode(bare)) {
+			case Mux(roomId, frame):
+				Assert.equals("0c", frame.toHex());
+			case _:
+				Assert.fail("expected Mux");
+		}
+
+		// MuxClosed: канал закрыт, сокет жив
+		var closed = Wire.encode(MuxClosed("Ab3xYz9Kp", 4000, "client left"));
+		Assert.equals(Wire.OP_MUX_CLOSED, closed.get(0));
+
+		switch (Wire.decode(closed) ) {
+			case MuxClosed(roomId, code, message):
+				Assert.equals("Ab3xYz9Kp", roomId);
+				Assert.equals(4000, code);
+				Assert.equals("client left", message);
+			case _:
+				Assert.fail("expected MuxClosed");
+		}
+	}
+
 	static function mapOf(k1:Dynamic, v1:Dynamic, ?k2:Dynamic, ?v2:Dynamic, ?k3:Dynamic, ?v3:Dynamic): StringMap<Dynamic> {
 		var m = new StringMap<Dynamic>();
 		m.set(k1, v1);

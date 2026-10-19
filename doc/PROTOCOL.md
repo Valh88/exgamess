@@ -117,6 +117,9 @@ GET ws://host:port/ws/:room_id?sessionId=:session_id&reconnectionToken=:token
 | 18 | `PING` | оба | без payload — однобайтовый (keepalive/RTT); с payload — синхронизация времени и RTT: клиент шлёт `{"t": <свои монотонные ms>, "rtt"?: <int ms — последний замер>}`, сервер эхирует `{"t": ..., "ts": <unix-ms сервера>}` (источник `Room.serverNow()` в SDK) и складывает `rtt` в клиента (EMA; читается `Room.client_rtt/2`, telemetry `[:ex_games, :room, :ping]`); голый `18` остаётся валидным (обратная совместимость) |
 | 21 | `ROOM_REQUEST` | клиент → сервер | `{"i": <request_id>, "t": <type>, "p": <payload>}` |
 | 22 | `ROOM_RESPONSE` | сервер → клиент | `{"i": <request_id>, "p": <payload>}` |
+| 23 | `ROOM_ENTER` | клиент → сервер | gateway: `{"room_id": "...", "session_id": "...", "reconnection_token"?: "..."}` — вход в комнату на общем сокете (см. «Gateway») |
+| 25 | `MUX` | оба | gateway: `{"r": <room_id>, "f": <bin — внутренний кадр как есть>}` |
+| 26 | `MUX_CLOSED` | сервер → клиент | gateway: `{"r": <room_id>, "code": <int>, "message": "..."}` — канал комнаты закрыт, сокет жив |
 
 Клиент после получения `JOIN_ROOM` может отправить свой `JOIN_ROOM` (ack) —
 сервер его игнорирует (для совместимости с существующими клиентами).
@@ -165,9 +168,49 @@ GET ws://host:port/ws/:room_id?sessionId=:session_id&reconnectionToken=:token
 2. `WS /ws/:room_id?sessionId=…&reconnectionToken=…` → сервер шлёт
    `JOIN_ROOM` (10) с новым токеном + полный `ROOM_STATE` (14).
 
+На gateway-сокете шаг HTTP не нужен — `session_id` известен клиенту:
+повторный `ROOM_ENTER` (23) с `reconnection_token` делает reattach.
+
 По истечении окна клиент удаляется с причиной `:closed` (кадр `LEAVE_ROOM`
 от клиента или `reconnect_ttl: false` отключают этот механизм: обрыв сразу
 вызывает `handle_leave`).
+
+## 2a. Gateway: несколько комнат одним WebSocket
+
+`GET /ws/:room_id` открывает сокет одной комнаты. Альтернатива —
+мультиплексированный сокет `GET /ws` (без room_id): все комнаты одного
+клиента живут на одном соединении, кадры адресуются конвертами.
+
+Флоу:
+
+1. HTTP-шаг тот же (бронь матча/комнаты, `session_id` на комнату);
+2. `GET ws://host:port/ws` — сокет без комнаты;
+3. `ROOM_ENTER` (23) — вход: без `reconnection_token` — attach по брони,
+   с токеном — reattach (reconnect-флоу, ротация токена);
+4. сервер отвечает обычным `JOIN_ROOM` (10) и `ROOM_STATE` (14) — но в
+   `MUX`-конверте (25): `{"r": <room_id>, "f": <кадр как есть>}`;
+5. далее все комнатные кадры (`ROOM_DATA`, `ROOM_REQUEST`, `PING` с RTT,
+   `LEAVE_ROOM`, …) ходят внутри `MUX` без изменений — внутренний кадр
+   не перекодируется;
+6. закрытие канала — `MUX_CLOSED` (26): кик, комната закрылась, отказ
+   входа (`"enter failed: …"`, `"already entered"`). Сокет при этом жив,
+   остальные комнаты не затронуты.
+
+Правила:
+
+* повторный `ROOM_ENTER` в ту же комнату на одном сокете → `MUX_CLOSED`
+  c кодом 522 (`already entered`);
+* голый `PING` (18) на сокете — keepalive самого соединения (эхо);
+  пер-комнатные PING/PONG ходят в конвертах (RTT/часы как обычно);
+* невалидный внешний кадр → кик всего сокета (4002), как и на `/ws/:room_id`;
+* обрыв сокета: сервер видит DOWN транспортов всех комнат клиента и держит
+  их reconnect-слоты; повторное подключение — снова `ROOM_ENTER` с токенами.
+
+Реализация: сервер — `ExGames.Room.Gateway` (канал-прокси на каждую пару
+gateway×комната, комната-GenServer не меняется) + `ExGamesWebWeb.GatewaySocket`;
+клиент — `gamessa.Gateway`/`gamessa.transport.MuxChannel` (режим
+`client.useGateway`). Совместимость: опкоды 23/25/26 — старый сервер их
+не знает (invalid frame → кик), а старый клиент на `/ws` не заходит.
 
 ### request/response
 

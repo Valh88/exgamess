@@ -79,6 +79,40 @@ defmodule ExGames.WireTest do
       assert {:ok, {:error, %{"code" => 526, "message" => "internal error", "request_id" => 42}}} =
                Wire.decode(frame)
     end
+
+    test "room_enter carries reservation" do
+      frame =
+        Wire.encode(:room_enter, %{room_id: "r1", session_id: "s1", reconnection_token: "tok"})
+
+      assert <<23, _::binary>> = frame
+
+      assert {:ok,
+              {:room_enter,
+               %{"room_id" => "r1", "session_id" => "s1", "reconnection_token" => "tok"}}} =
+               Wire.decode(frame)
+    end
+
+    test "mux carries inner frame bytes verbatim" do
+      inner = Wire.encode(:room_data, {"move", %{"x" => 1}})
+      frame = Wire.encode(:mux, {"room9", inner})
+      assert <<25, _::binary>> = frame
+
+      assert {:ok, {:mux, "room9", ^inner}} = Wire.decode(frame)
+    end
+
+    test "mux inner frame survives non-utf8 and single-byte payloads" do
+      for inner <- [<<12>>, <<18>>, <<13, 0xFF, 0x81, 0x00>>] do
+        frame = Wire.encode(:mux, {"r", inner})
+        assert {:ok, {:mux, "r", ^inner}} = Wire.decode(frame)
+      end
+    end
+
+    test "muxClosed carries close code and message" do
+      frame = Wire.encode(:mux_closed, {"room9", 4000, "client left"})
+      assert <<26, _::binary>> = frame
+
+      assert {:ok, {:mux_closed, "room9", 4000, "client left"}} = Wire.decode(frame)
+    end
   end
 
   describe "decode errors" do
@@ -97,6 +131,14 @@ defmodule ExGames.WireTest do
     test "garbage payload" do
       assert {:error, :invalid_frame} = Wire.decode(<<13, 0xFF, 0xFF, 0xFF>>)
     end
+
+    test "mux without f key" do
+      assert {:error, :invalid_frame} = Wire.decode(<<25, 0x81, 0xA1, 0x72, 0xA1, 0x78>>)
+    end
+
+    test "mux_closed without code" do
+      assert {:error, :invalid_frame} = Wire.decode(<<26, 0xFF>>)
+    end
   end
 
   test "opcode_number/opcode_name are consistent" do
@@ -109,7 +151,10 @@ defmodule ExGames.WireTest do
           room_state_patch: 15,
           ping: 18,
           room_request: 21,
-          room_response: 22
+          room_response: 22,
+          room_enter: 23,
+          mux: 25,
+          mux_closed: 26
         ] do
       assert Wire.opcode_number(name) == code
       assert Wire.opcode_name(code) == name

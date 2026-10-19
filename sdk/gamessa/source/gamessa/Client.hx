@@ -261,6 +261,29 @@ class Client {
 		return url;
 	}
 
+	/** WS-URL мультиплексированного сокета (несколько комнат одним соединением). */
+	public function gatewayWsUrl():String {
+		return wsEndpoint() + '/ws';
+	}
+
+	/**
+		Режим gateway: все новые комнаты открываются на ОДНОМ WebSocket-сокете
+		(`GET /ws`, кадры RoomEnter/Mux) вместо выделенного соединения на
+		комнату. По умолчанию выключен — поведение прежнее. Смешанный режим:
+		конкретной комнате задайте `dedicated: true` в `connectRoom` или
+		инжектируйте свой транспорт. Требует сервер с опкодами 23/25/26.
+	*/
+	public var useGateway:Bool = false;
+
+	var gatewayRef:Null<Gateway> = null;
+
+	/** Общий сокет комнат (лениво создаётся; см. `useGateway`). */
+	public function gateway():Gateway {
+		if (gatewayRef == null)
+			gatewayRef = new Gateway(this);
+		return gatewayRef;
+	}
+
 	/**
 		Подключает Room по брони (шаг 2). Колбэк `onJoin` комнаты сработает
 		при рукопожатии; сюда Room возвращается сразу.
@@ -270,9 +293,37 @@ class Client {
 		Без аннотации состояние остаётся динамическим. Генерики Haxe стираются —
 		типизация compile-time; рантайм-представление — анонимные объекты
 		(динамические ключи map'ов — `Dynamic`).
+
+		`transport` — явный транспорт (dedicated); `opts.dedicated` — выделенный
+		WS даже в режиме `useGateway`; иначе в режиме `useGateway` комната
+		получает канал на общем сокете.
 	*/
-	public function connectRoom<S>(reservation:SeatReservation, ?transport:gamessa.transport.ITransport):Room<S> {
+	public function connectRoom<S>(reservation:SeatReservation, ?transport:gamessa.transport.ITransport,
+			?opts:{?dedicated:Bool}):Room<S> {
+		if (transport == null && (opts == null || opts.dedicated != true) && useGateway)
+			transport = gateway().channelFor(reservation);
+
 		return cast new Room(this, reservation, transport);
+	}
+
+	/** Транспорт нового Room: канал gateway в режиме useGateway, иначе выделенный WS. */
+	public function defaultRoomTransport(reservation:SeatReservation):gamessa.transport.ITransport {
+		if (useGateway)
+			return gateway().channelFor(reservation);
+
+		return new gamessa.transport.WebSocketTransport(roomWsUrl(reservation.roomId, reservation.sessionId), verifyCert);
+	}
+
+	/**
+		Транспорт reconnect'а Room. В режиме gateway и живом общем сокете —
+		канал на нём (вход по токену); иначе выделенный WS (fallback, в т.ч.
+		когда gateway исчерпал попытки).
+	*/
+	public function reconnectTransport(res:SeatReservation, roomId:String):gamessa.transport.ITransport {
+		if (useGateway && gateway().isConnected())
+			return gateway().channelFor(res);
+
+		return new gamessa.transport.WebSocketTransport(roomWsUrl(roomId, res.sessionId, res.reconnectionToken), verifyCert);
 	}
 
 	/** WS-эндпоинт, выведенный из http-эндпоинта. */

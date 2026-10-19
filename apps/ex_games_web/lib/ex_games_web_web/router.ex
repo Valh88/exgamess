@@ -116,6 +116,9 @@ defmodule ExGamesWebWeb.Router do
   scope "/", ExGamesWebWeb do
     # WebSocket-апгрейд (не JSON): идентификация по seat reservation.
     get "/ws/:room_id", WsController, :upgrade
+
+    # мультиплексированный сокет: комнаты входят кадрами room_enter
+    get "/ws", GatewayWsController, :upgrade
   end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development

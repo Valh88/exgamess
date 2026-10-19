@@ -160,6 +160,106 @@ class IntegrationTest extends utest.Test {
 		async.setTimeout(15000); // s -> Assert.fail("timed out waiting for reconnect"), 15);
 	}
 
+	function testGatewayTwoRoomsOneSocket(async:Async):Void {
+		var client = makeClient();
+		client.useGateway = true;
+		var username = 'hx_${Std.int(Math.random() * 1000000)}';
+
+		newUser(client, username, () -> {
+			// два независимых канала чата = две комнаты на ОДНОМ общем сокете
+			joinChat(client, room1 -> {
+				client.joinOrCreate("chat", {channel: 'gw-${Std.random(1000000)}'}, res2 -> {
+					var room2 = client.connectRoom(res2);
+
+					room2.onJoin.add(_ -> {
+						// обе комнаты на одном открытом сокете (join пришёл через него)
+						Assert.isTrue(client.gateway().isConnected());
+						// исходящие идут конвертами по одному сокету
+						room1.send("say", {text: "mux hello"});
+					});
+
+					// say из room1 — broadcast room1; вторая комната его не слышит
+					room1.onMessage.add(e -> {
+						if (e.type != "say")
+							return;
+
+						var m:StringMap<Dynamic> = e.message;
+						if (m.get("text") != "mux hello")
+							return;
+
+						// обе комнаты живы на одном сокете: запрос-ответ второй
+						room2.request("history", {}, res -> {
+							var h:StringMap<Dynamic> = res;
+							Assert.notNull(h.get("messages"));
+							room1.leave();
+							room2.leave();
+							async.done();
+						}, err -> Assert.fail('history via gateway failed: $err'));
+					});
+				}, err -> Assert.fail('joinOrCreate #2 failed: $err'));
+			});
+		});
+
+		async.setTimeout(10000);
+	}
+
+	function testGatewayDropReconnectsRoomOnSameSocket(async:Async):Void {
+		var client = makeClient();
+		client.useGateway = true;
+
+		newUser(client, 'hx_${Std.int(Math.random() * 1000000)}', () -> {
+			joinChat(client, room -> {
+				var joins = 0;
+
+				room.onJoin.add(e -> {
+					joins++;
+
+					if (joins == 1) {
+						Assert.isTrue(client.gateway().isConnected());
+
+						// рвём общий сокет: gateway сам переподключит его и
+						// re-enter'ит комнату по токену (Room видит re-JoinRoom)
+						haxe.Timer.delay(() -> client.gateway().connection.close(), 100);
+					} else if (joins == 2) {
+						// сессия сохранена (reattach), комната пережила обрыв сокета
+						Assert.equals(room.sessionId, e.data.get("session_id"));
+						Assert.notNull(e.data.get("reconnection_token"));
+
+						room.request("history", {}, _ -> {
+							room.leave();
+							async.done();
+						}, err -> Assert.fail('history after gateway reconnect failed: $err'));
+					}
+				});
+			});
+		});
+
+		async.setTimeout(15000);
+	}
+
+	function testGatewayDedicatedMix(async:Async):Void {
+		// смешанный режим: одна комната на общем сокете, вторая на выделенном
+		var client = makeClient();
+		client.useGateway = true;
+
+		newUser(client, 'hx_${Std.int(Math.random() * 1000000)}', () -> {
+			joinChat(client, gwRoom -> {
+				client.joinOrCreate("chat", {channel: 'mix-${Std.random(1000000)}'}, res2 -> {
+					var ownRoom = client.connectRoom(res2, null, {dedicated: true});
+
+					ownRoom.onJoin.add(_ -> {
+						Assert.isFalse(ownRoom.connection == client.gateway().connection);
+						gwRoom.leave();
+						ownRoom.leave();
+						async.done();
+					});
+				}, err -> Assert.fail('joinOrCreate #2 failed: $err'));
+			});
+		});
+
+		async.setTimeout(10000);
+	}
+
 	function testQueueToMatchEndToEnd(async:Async):Void {
 		var c1 = makeClient();
 		var c2 = makeClient();

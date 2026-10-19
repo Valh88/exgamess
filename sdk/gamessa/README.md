@@ -138,6 +138,40 @@ keepalive-PING; до первого PONG `serverNow()` возвращает ло
 `onLeave(4003, "reconnect rejected: …")`. Ретраи с backoff — только для
 временных сбоев (сеть недоступна, 5xx).
 
+### Gateway: все комнаты одним WebSocket (`useGateway`)
+
+По умолчанию каждая `Room` открывает свой WS-сокет (`GET /ws/:room_id`).
+Режим gateway держит **один** сокет (`GET /ws`) на все комнаты клиента —
+кадры ходят в конвертах (`ROOM_ENTER`/`MUX`/`MUX_CLOSED`, опкоды 23/25/26;
+требуется сервер с их поддержкой):
+
+```haxe
+var client = new Client("http://localhost:4100");
+client.useGateway = true;   // все новые комнаты — на общем сокете
+
+var lobby = client.connectRoom(res1);   // канал gateway
+var match = client.connectRoom(res2);
+
+// смешанный режим: конкретной комнате — выделенный сокет
+var lagSensitive = client.connectRoom(res3, null, {dedicated: true});
+```
+
+Поведение:
+
+* API `Room` не меняется (onJoin/onMessage/request/ping/leave — как обычно);
+* обрыв сокета не дёргает комнаты: gateway переподключается сам (backoff)
+  и повторно входит в каждую комнату по её reconnection-токену — комната
+  видит повторный `onJoin` с ротированным токеном, сессия сохранена;
+* кик/закрытие конкретной комнаты (`MUX_CLOSED`) закрывает только её
+  канал — сокет и остальные комнаты живут; комната уходит в обычный
+  per-room reconnect;
+* исчерпание попыток gateway → каналы закрываются → комнаты fallback'ом
+  уходят в per-room reconnect (выделенные сокеты);
+* на HashLink это заодно чинит известный race `Socket.select` при
+  нескольких WS-сокетах в одном процессе: в норме сокет один;
+* keepalive — один голый PING на сокет; per-room PING'и (RTT, `serverNow`)
+  ходят как обычно, в конвертах.
+
 ### Очередь подбора (`queue`)
 
 Демо-очередь (из `apps/arena_example`): игрок встаёт в очередь, сервер
