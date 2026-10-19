@@ -947,7 +947,7 @@ defmodule ExGames.Room.Server do
         {:noreply, state}
 
       {:error, :invalid_frame} ->
-        Logger.warning("[ex_games] invalid frame from #{client.session_id} in #{state.room_id}")
+        Logger.warning("[ex_games] invalid frame from #{client.session_id} in #{state.room_id}: #{inspect(frame)}")
         remove_client(state, client, :kick, 4002, "invalid frame")
     end
   end
