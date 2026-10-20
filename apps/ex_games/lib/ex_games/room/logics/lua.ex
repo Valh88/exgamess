@@ -194,7 +194,11 @@ defmodule ExGames.Room.Logics.Lua do
       @ex_games_lua_config unquote(opts)
 
       # типы из M.schema скрипта (headless-прогон VM при первом обращении);
-      # интроспекция определена явно — DSL её не генерирует
+      # интроспекция определена явно — DSL её не генерирует.
+      # M.schema.messages содержит И send-, И request-имена @:rpc-методов
+      # Haxe-скрипта, поэтому та же выборка даёт и типы request-ов: без
+      # __request_types__ все request'ы комнаты уходили бы первому
+      # wildcard-модулю из logic:.
       @doc false
       def __message_types__ do
         ExGames.Room.Logics.Lua.schema_types(Keyword.fetch!(@ex_games_lua_config, :script))
@@ -202,6 +206,20 @@ defmodule ExGames.Room.Logics.Lua do
 
       @doc false
       def __message_wildcard__ do
+        wildcard_from_config_or_schema()
+      end
+
+      @doc false
+      def __request_types__ do
+        ExGames.Room.Logics.Lua.schema_types(Keyword.fetch!(@ex_games_lua_config, :script))
+      end
+
+      @doc false
+      def __request_wildcard__ do
+        wildcard_from_config_or_schema()
+      end
+
+      defp wildcard_from_config_or_schema do
         case Keyword.fetch(@ex_games_lua_config, :wildcard) do
           {:ok, flag} ->
             flag

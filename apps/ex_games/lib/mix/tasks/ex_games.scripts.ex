@@ -137,6 +137,11 @@ defmodule Mix.Tasks.ExGames.Scripts do
 
   defp roots do
     cond do
+      # Корни вне зонтика (приложение-потребитель рядом с библиотекой):
+      # GAMESSA_SCRIPTS_ROOTS="../extract_pro" или список через ":"
+      roots = System.get_env("GAMESSA_SCRIPTS_ROOTS") ->
+        roots |> String.split(":") |> Enum.reject(&(&1 == "")) |> Enum.map(&Path.expand/1)
+
       File.dir?("server_scripts") ->
         ["."]
 
@@ -149,7 +154,7 @@ defmodule Mix.Tasks.ExGames.Scripts do
 
       true ->
         Mix.raise(
-          "server_scripts/ не найден (запускайте из каталога приложения или из корня зонда)"
+          "server_scripts/ не найден (запускайте из каталога приложения или из корня зонда, либо задайте GAMESSA_SCRIPTS_ROOTS)"
         )
     end
   end

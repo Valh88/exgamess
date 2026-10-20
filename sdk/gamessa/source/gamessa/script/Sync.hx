@@ -59,11 +59,23 @@ class Sync<TState> extends ServerLogic<TState>
 	/** Сервер: текущий документ состояния (заполняет сгенерированный диспетчер). */
 	public var state(default, set):Null<TState>;
 
+	/**
+		Клиент: ключ ветки корневого состояния (state_key тонкого модуля
+		комнаты). Комната из нескольких Lua-скриптов публикует документ
+		каждого в свою ветку корня; задайте `stateKey` — и после `bind`
+		`state` будет держать ветку ЭТОГО скрипта, а не корень. null
+		(умолчание) — комната с одним скриптом, `state` = корень.
+	**/
+	public var stateKey(default, set):Null<String>;
+
 	function set_caller(v:Null<String>):Null<String>
 		return caller = v;
 
 	function set_state(v:Null<TState>):Null<TState>
 		return state = v;
+
+	function set_stateKey(v:Null<String>):Null<String>
+		return stateKey = v;
 
 	public function new()
 	{
@@ -84,9 +96,13 @@ class Sync<TState> extends ServerLogic<TState>
 	{
 		this.room = room;
 		#if !lua
-		room.onStateChange.add(s -> state = s);
+		room.onStateChange.add(s -> state = extractState(s));
 		#end
 	}
+
+	/** Клиент: срез ветки из корневого снапшота (stateKey == null → корень). */
+	function extractState(s:TState):TState
+		return stateKey == null ? s : Reflect.field(s, stateKey);
 
 	/** Серверный хук: клиент присоединился. Вернуть эффекты (или null). */
 	function onJoin(_sid:String, _auth:Dynamic):Array<Effect>
