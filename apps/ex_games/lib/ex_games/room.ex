@@ -339,6 +339,17 @@ defmodule ExGames.Room do
     GenServer.cast(via(room.room_id), {:set_metadata, metadata})
   end
 
+  @doc """
+  Доставляет сообщение в процесс самой комнаты: цепочка `handle_info` ->
+  `logic_info` ВСЕХ логик комнаты (оборачивается в `{:logic_notify, msg}`).
+  Канал скрипт -> соседние логики, напр. срез позиций игроков из
+  PlayersSync для экстракции. Эффект скрипта: `NotifyRoom(msg)`.
+  """
+  @spec notify_room(handle(), term()) :: :ok
+  def notify_room(%__MODULE__.Handle{} = room, msg) do
+    GenServer.cast(via(room.room_id), {:notify_room, msg})
+  end
+
   @doc "Задаёт игровое состояние для рассылки (полный снапшот на тике)."
   @spec set_state(handle(), term()) :: :ok
   def set_state(%__MODULE__.Handle{} = room, game_state) do

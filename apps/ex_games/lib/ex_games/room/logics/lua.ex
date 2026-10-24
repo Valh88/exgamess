@@ -138,6 +138,21 @@ defmodule ExGames.Room.Logics.Lua do
     end
   end
 
+  # NotifyRoom от соседних логик: доставляем скрипту кадром "info"
+  # (ScriptWire -> ScriptFn.Info -> Sync.onInfo). Остальные сообщения
+  # процесса (таймеры, :DOWN) скрипту не идут.
+  @doc false
+  def base_logic_info({:logic_notify, msg}, state) do
+    handle = %Room.Handle{room_id: state.room_id}
+
+    case run(state, handle, "info", [msg]) do
+      {:ok, slice} -> {:ok, slice}
+      :error -> {:ok, state}
+    end
+  end
+
+  def base_logic_info(_msg, state), do: {:ok, state}
+
   # Тик моста: драйвит VM вручную (LogicServer.tick/1), авто-тик Server'а
   # выключен (tick_rate: 0) — иначе dt делится между двумя драйверами.
   @impl true
@@ -269,6 +284,11 @@ defmodule ExGames.Room.Logics.Lua do
       @impl true
       def logic_leave(room, client, reason, state) do
         ExGames.Room.Logics.Lua.base_logic_leave(room, client, reason, state)
+      end
+
+      @impl true
+      def logic_info(msg, state) do
+        ExGames.Room.Logics.Lua.base_logic_info(msg, state)
       end
 
       @impl true
@@ -585,6 +605,11 @@ defmodule ExGames.Room.Logics.Lua do
 
   defp apply_effect(handle, ["set_metadata", metadata]) when is_map(metadata) do
     set_metadata(handle, metadata)
+  end
+
+  # эффект NotifyRoom: срез данных логики -> всем логикам комнаты
+  defp apply_effect(handle, ["notify_room", msg]) do
+    ExGames.Room.notify_room(handle, msg)
   end
 
   defp apply_effect(_handle, effect) do

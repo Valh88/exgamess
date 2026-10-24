@@ -111,4 +111,17 @@ class Sync<TState> extends ServerLogic<TState>
 	/** Серверный хук: клиент ушёл. Вернуть эффекты (или null). */
 	function onLeave(_sid:String, _reason:String):Array<Effect>
 		return null;
+
+	/**
+		Серверный хук: внутрикомнатное сообщение от соседней логики
+		(эффект `NotifyRoom` — напр. срез позиций из PlayersSync;
+		доставляется цепочкой handle_info -> logic_info -> мост кадром
+		"info"). Вернуть эффекты (или null). Хук НЕ ставит `caller`.
+
+		Нюанс перекодировки: list-поля msg приходят lua-таблицами с
+		1-based числовыми ключами — итерируй через Reflect.fields(arr)
+		(строковые индексы "1","2",...), `.length` у них отсутствует.
+	**/
+	function onInfo(_msg:Dynamic):Array<Effect>
+		return null;
 }

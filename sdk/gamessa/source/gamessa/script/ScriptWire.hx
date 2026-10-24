@@ -27,6 +27,9 @@ class ScriptWire
 		if (fn == "request")
 			return ScriptFn.Request(a1, a2, a3);
 
+		if (fn == "info")
+			return ScriptFn.Info(a1);
+
 		// неизвестный вид — совместимость вперёд: fn как тип кадра
 		return ScriptFn.Message(if (fn == "message") a1 else fn, a2, a3);
 	}

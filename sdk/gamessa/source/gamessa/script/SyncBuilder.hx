@@ -194,6 +194,9 @@ class SyncBuilder
 										this.caller = sid;
 										$b{dispatchChain(send, pos)};
 
+									case Info(msg):
+										return onInfo(msg);
+
 									case Join(sid, auth):
 										this.caller = sid;
 										return onJoin(sid, auth);

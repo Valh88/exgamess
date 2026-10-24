@@ -20,4 +20,11 @@ enum Effect
 	Lock;
 	Unlock;
 	SetMetadata(metadata:Dynamic);
+	/**
+		Доставить сообщение в процесс самой комнаты: цепочка
+		`handle_info` -> `logic_info` ВСЕХ логик комнаты. Канал
+		скрипт -> соседние логики (позиции игроков для экстракции и т.п.).
+		Сообщение оборачивается в `{:logic_notify, msg}`.
+	**/
+	NotifyRoom(msg:Dynamic);
 }

@@ -715,6 +715,17 @@ defmodule ExGames.Room.Server do
     {:noreply, state}
   end
 
+  # эффект NotifyRoom скрипта: сообщение логики -> ВСЕМ логикам комнаты
+  # (цепочка handle_info -> logic_info); оборачиваем, чтобы не пересечься
+  # со служебными сообщениями процесса. deliver_info возвращает НОВОЕ
+  # состояние (логики могли обновить своё) — пробрасываем дальше.
+  def handle_cast({:notify_room, msg}, %__MODULE__{} = state) do
+    case deliver_info(state, {:logic_notify, msg}) do
+      {:noreply, new_state} -> {:noreply, new_state}
+      other -> other
+    end
+  end
+
   def handle_cast({:set_state, wire_state}, %__MODULE__{} = state) do
     case ExGames.Room.StateSchema.validate_root(state.state_schemas, wire_state) do
       :ok ->

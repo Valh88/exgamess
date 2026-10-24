@@ -29,4 +29,12 @@ enum ScriptFn
 		обработчика» — мост отвечает ошибкой.
 	**/
 	Request(type:String, sid:String, payload:Dynamic);
+
+	/**
+		Внутрикомнатное сообщение: срез данных соседней логики, доставленный
+		эффектом `NotifyRoom` (цепочка handle_info -> logic_info -> мост).
+		args моста = [msg]. Идёт в `Sync.onInfo` (эффекты разрешены);
+		клиентский предикт может сконструировать напрямую.
+	**/
+	Info(msg:Dynamic);
 }
