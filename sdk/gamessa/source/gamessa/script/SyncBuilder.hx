@@ -149,8 +149,11 @@ class SyncBuilder
 				});
 		}
 
-		if (rpcs.length == 0)
-			return fields;
+		// РАННИЙ ВЫХОД ДЛЯ ПУСТЫХ rpcs ЗАПРЕЩЁН: Sync без @:rpc всё равно
+		// нуждается в сгенерированных messages() (биндинг M.schema зовёт её
+		// при загрузке чанка — nil-call ронял LogicServer) и call()
+		// (диспетчер хуков Join/Leave/Info). Пустые списки дают пустые
+		// цепочки — валидный код.
 
 		final send = [for (r in rpcs) if (r.mode == RServer && r.isSend) r];
 		final request = [for (r in rpcs) if (r.mode == RServer && !r.isSend) r];
