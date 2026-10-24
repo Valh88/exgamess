@@ -70,6 +70,47 @@ defmodule ExGames.RoomReconnectTest do
     scores
   end
 
+
+  # -------------------------------------------------------------------------
+  # reclaim: восстановление сессии по user_id (перезапуск приложения)
+  # -------------------------------------------------------------------------
+
+  test "reclaim возвращает слот сессии пользователя после обрыва", %{room_id: room_id} do
+    sid = ExGames.Id.session_id()
+
+    :ok =
+      Server.reserve_seat(room_id, sid, %{"user_id" => "u1", "username" => "ann"}, %{})
+
+    {transport, _join_frame, _} = FakeTransport.attach!(room_id, sid)
+    {:ok, {:join_room, %{"reconnection_token" => token}}} =
+      transport |> FakeTransport.frames() |> Enum.find_value(&Wire.decode/1) |> then(& &1)
+
+    drop_and_await_slot!(room_id, sid, token, transport)
+
+    assert {:ok, ^sid, ^token} = Server.reclaim(room_id, "u1")
+  end
+
+  test "reclaim чужого пользователя и живой сессии отклоняется", %{room_id: room_id} do
+    sid = ExGames.Id.session_id()
+    :ok = Server.reserve_seat(room_id, sid, %{"user_id" => "u1"}, %{})
+    {transport, join_frame, _} = FakeTransport.attach!(room_id, sid)
+    {:ok, {:join_room, %{"reconnection_token" => token}}} = Wire.decode(join_frame)
+
+    # транспорт жив — слота нет, reclaim невозможен (живую сессию не подменяем)
+    assert {:error, :not_found} = Server.reclaim(room_id, "u1")
+
+    drop_and_await_slot!(room_id, sid, token, transport)
+
+    # теперь слот есть, но user_id не тот
+    assert {:error, :not_found} = Server.reclaim(room_id, "someone-else")
+    # анонимная комната (без user_id в auth) тоже не находится
+    assert {:error, :not_found} = Server.reclaim(room_id, "")
+  end
+
+  test "reclaim несуществующей комнаты", %{room_id: _room_id} do
+    assert {:error, :unknown_room} = Server.reclaim("nowhere", "u1")
+  end
+
   defp eventually(fun, timeout \\ 1000) do
     deadline = System.monotonic_time(:millisecond) + timeout
     do_eventually(fun, deadline)

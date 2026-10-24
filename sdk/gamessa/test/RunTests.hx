@@ -13,6 +13,8 @@ class RunTests {
 		runner.addCase(new gamessa.tests.StatePatchTest());
 		runner.addCase(new gamessa.tests.RoomTest());
 		runner.addCase(new gamessa.tests.GatewayTest());
+		runner.addCase(new gamessa.tests.ClientTest());
+		runner.addCase(new gamessa.tests.ErrorTextTest());
 		runner.addCase(new gamessa.tests.LatencyTransportTest());
 		runner.addCase(new gamessa.tests.SchemaTest());
 		runner.addCase(new gamessa.tests.ServerLogicTest());

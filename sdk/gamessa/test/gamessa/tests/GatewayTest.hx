@@ -217,6 +217,50 @@ class GatewayTest extends utest.Test {
 		Assert.isFalse(socket.isOpen());
 	}
 
+	function testSocketDropAndRestoreSignals(async:utest.Async) {
+		var socket = new FakeSocket();
+		var gateway = makeGateway(socket);
+		gateway.reconnectDelayMs = 10;
+		gateway.reconnectMaxDelayMs = 10;
+
+		var drops = 0;
+		var restores = 0;
+		gateway.onSocketDrop.add(_ -> drops++);
+		gateway.onSocketRestore.add(_ -> restores++);
+
+		var channel = gateway.channelFor(reservation("r1", "s1"));
+		channel.connect();
+
+		socket.drop();
+		Assert.equals(1, drops);
+
+		// сокет переподключился: сигнал восстановления, ровно один
+		haxe.Timer.delay(() -> {
+			Assert.equals(1, restores);
+			Assert.equals(1, drops);
+			Assert.isTrue(gateway.isConnected());
+			async.done();
+		}, 200);
+	}
+
+	function testSocketRttFromKeepaliveEcho() {
+		var socket = new FakeSocket();
+		var gateway = makeGateway(socket);
+		var channel = gateway.channelFor(reservation("r1", "s1"));
+		channel.connect();
+
+		Assert.isFalse(gateway.socketRtt != null);
+
+		// эхо keepalive-ping'а с нашей меткой t
+		var t0 = haxe.Timer.stamp() * 1000.0 - 5;
+		var payload = new StringMap<Dynamic>();
+		payload.set("t", t0);
+		socket.feed(Ping(payload));
+
+		Assert.isTrue(gateway.socketRtt != null);
+		Assert.isTrue(gateway.socketRtt >= 4); // ~5ms «полёта»
+	}
+
 	static function matchRoomEnter(f:Frame):Bool {
 		return switch (f) {
 			case RoomEnter(_): true;

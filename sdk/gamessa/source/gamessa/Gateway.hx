@@ -4,6 +4,7 @@ import gamessa.transport.ITransport;
 import gamessa.transport.MuxChannel;
 import gamessa.transport.TransportClose;
 import gamessa.transport.WebSocketTransport;
+import gamessa.util.Signal;
 import gamessa.wire.Frame;
 import gamessa.wire.Wire;
 import haxe.io.Bytes;
@@ -48,6 +49,21 @@ class Gateway {
 
 	/** Интервал keepalive-PING сокета, мс (0 — выключить). */
 	public var keepAliveMs:Int = 25_000;
+
+	/**
+		Сокет оборван (сеть/сервер): комнаты живы — gateway переподключается и
+		re-enter'ит их по токенам. Для индикатора сети в UI; подписка до
+		первого `channelFor` не пропустит событие.
+	*/
+	public var onSocketDrop(default, null):Signal<TransportClose> = new Signal();
+
+	/** Сокет восстановлен после обрыва (комнаты повторно вошли). */
+	public var onSocketRestore(default, null):Signal<Dynamic> = new Signal();
+
+	/** RTT сокета, ms (по keepalive-ping'ам; null до первого замера). */
+	public var socketRtt(default, null):Null<Int> = null;
+
+	var hadDrop:Bool = false;
 
 	var channels:Map<String, MuxChannel> = new Map();
 	var sendBuffer:Array<Bytes> = [];
@@ -166,6 +182,11 @@ class Gateway {
 					channel.sendEnter();
 
 			flushBuffer();
+
+			if (hadDrop) {
+				hadDrop = false;
+				onSocketRestore.dispatch(null);
+			}
 		};
 
 		conn.onMessage = bytes -> handleFrame(bytes);
@@ -195,6 +216,8 @@ class Gateway {
 			return;
 		}
 
+		hadDrop = true;
+		onSocketDrop.dispatch(close);
 		reconnectLater();
 	}
 
@@ -278,8 +301,16 @@ class Gateway {
 				if (channel != null)
 					channel.closedByServer(code, message);
 
-			case Ping(_):
-				// эхо keepalive-пинга сокета; пер-комнатные PONG — в конвертах
+			case Ping(payload):
+				// эхо keepalive-пинга сокета: в payload наша метка t → RTT.
+				// Пер-комнатные PONG ходят в конвертах (Mux) и сюда не попадают
+				if (payload != null) {
+					var t0:Null<Float> = payload.get("t");
+					if (t0 != null) {
+						var rtt = now() - t0;
+						socketRtt = rtt < 0 ? 0 : Std.int(rtt);
+					}
+				}
 
 			case _:
 		}
@@ -318,7 +349,9 @@ class Gateway {
 				return;
 
 			if (isConnected()) {
-				sendFrame(Wire.encode(Ping(null)));
+				// payload-ping: сервер эхирует кадр как есть — заодно меряем
+				// RTT сокета; как данные он так же сбрасывает таймаут простоя
+				sendFrame(Wire.encode(Ping(socketPingPayload())));
 				armKeepAlive();
 			}
 			// сокет в реконнекте — onClose уже запустил цикл
@@ -330,5 +363,15 @@ class Gateway {
 			keepAliveTimer.stop();
 			keepAliveTimer = null;
 		}
+	}
+
+	function socketPingPayload():haxe.ds.StringMap<Dynamic> {
+		var m = new haxe.ds.StringMap<Dynamic>();
+		m.set("t", now());
+		return m;
+	}
+
+	static function now():Float {
+		return haxe.Timer.stamp() * 1000.0;
 	}
 }

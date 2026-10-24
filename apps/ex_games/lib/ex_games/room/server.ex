@@ -197,6 +197,24 @@ defmodule ExGames.Room.Server do
     _ -> :ok
   end
 
+  @doc """
+  Возвращает reconnect-слот сессии пользователя — восстановление после
+  потери клиентом токена (перезапуск приложения). Поиск по `user_id` из
+  auth-данных брони; слот должен быть в состоянии reconnect (транспорт
+  мёртв) — живую сессию другой девайс того же юзера подменить не может.
+
+  Возвращает `{:ok, session_id, reconnection_token}` — далее обычный
+  reconnect-флоу (`reattach/4` этим токеном), либо
+  `{:error, :not_found | :unknown_room}`.
+  """
+  @spec reclaim(Id.id(), String.t()) ::
+          {:ok, Id.id(), Id.id()} | {:error, :not_found | :unknown_room}
+  def reclaim(room_id, user_id) do
+    GenServer.call(via(room_id), {:reclaim, user_id})
+  catch
+    :exit, _ -> {:error, :unknown_room}
+  end
+
   @doc "Передаёт в комнату сырой кадр от клиента."
   @spec client_frame(Id.id(), Id.id(), Wire.frame()) :: :ok
   def client_frame(room_id, session_id, frame) do
@@ -505,6 +523,28 @@ defmodule ExGames.Room.Server do
       _ ->
         {:reply, {:error, :invalid_token}, state}
     end
+  end
+
+  def handle_call({:reclaim, user_id}, _from, %__MODULE__{} = state) do
+    # сессия пользователя в состоянии reconnect: клиент жив в clients,
+    # но его транспорт мёртв (слот в reconnecting)
+    session_id =
+      Enum.find_value(state.clients, fn {sid, %Client{} = client} ->
+        match?({^user_id, _}, presence_identity(client.auth)) && sid
+      end)
+
+    reply =
+      with {:ok, sid} when not is_nil(sid) <- {:ok, session_id},
+           {token, {^sid, _timer}} <-
+             Enum.find(state.reconnecting, fn {_token, {slot_sid, _}} ->
+               slot_sid == sid
+             end) do
+        {:ok, sid, token}
+      else
+        _ -> {:error, :not_found}
+      end
+
+    {:reply, reply, state}
   end
 
   def handle_call(:listing, _from, %__MODULE__{} = state) do

@@ -169,8 +169,48 @@ var lagSensitive = client.connectRoom(res3, null, {dedicated: true});
   уходят в per-room reconnect (выделенные сокеты);
 * на HashLink это заодно чинит известный race `Socket.select` при
   нескольких WS-сокетах в одном процессе: в норме сокет один;
-* keepalive — один голый PING на сокет; per-room PING'и (RTT, `serverNow`)
-  ходят как обычно, в конвертах.
+* здоровье сокета: `gateway.onSocketDrop` / `gateway.onSocketRestore` — по
+  одному событию на обрыв/восстановление (для индикатора сети; комнаты при
+  этом не дёргаются), `gateway.socketRtt` — RTT сокета по keepalive;
+* keepalive — один PING на сокет (с меткой времени → `socketRtt`); per-room
+  PING'и (RTT, `serverNow`) ходят как обычно, в конвертах.
+
+### Устойчивость HTTP и тексты ошибок
+
+`Client.httpRetries` — авто-повторы временных сбоев HTTP (сеть, 5xx, 429) с
+backoff; постоянные ошибки (прочие 4xx) не повторяются. По умолчанию 0 —
+поведение прежнее:
+
+```haxe
+client.httpRetries = 2;            // до 2 повторов
+client.httpRetryDelayMs = 200;     // задержка растёт 200→400→…
+```
+
+`ErrorText.userFacing(err)` / `ErrorText.ofCode(code, ?lang)` — готовые
+тексты ошибок (ru/en) по кодам протокола/HTTP/close: 523 → «Комната
+заполнена». Исходное серверное сообщение дописывается в скобках.
+
+### Живые сессии и восстановление после перезапуска
+
+После перезапуска приложения reconnection-токены теряются, но комната
+держит место `reconnect_ttl` (30с). По Bearer-токену сервер находит сессии
+пользователя:
+
+```haxe
+client.mySessions(sessions -> {
+    // sessions: [{roomId, roomName, username}]
+    var match = sessions[0];
+    if (match == null) return;
+
+    client.resumeSession(match.roomId, res -> {
+        var room = client.connectRoom(res);   // res несёт свежий токен
+        room.onJoin.add(_ -> trace("вернулись в матч"));
+    }, err -> trace(err));
+}, err -> trace(err));
+```
+
+`resumeSession` работает, пока жив reconnect-слот (после обрыва или
+«смерти» приложения); живую сессию другого устройства она не перехватывает.
 
 ### Очередь подбора (`queue`)
 
@@ -277,6 +317,7 @@ gamessa.util.Dispatcher.post = f -> mainThreadQueue.push(f);
 ```bash
 haxe test.hxml               # юнит-тесты кодека/кадров/времени/лага (190 проверок, interp)
 haxe test_integration.hxml   # против живого сервера PORT=4100 (graceful-skip)
+GAMESSA_FILTER=MySessions haxe test_integration.hxml   # только тесты по regex
 haxe build.hxml -js bin/gamessa.js        # проверка компиляции JS
 haxe build.hxml -hl bin/gamessa.hl        # проверка компиляции HL
 haxe example.hxml && neko bin/example.n   # чат-пример

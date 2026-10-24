@@ -237,6 +237,96 @@ class IntegrationTest extends utest.Test {
 		async.setTimeout(15000);
 	}
 
+	function testMySessionsAndResume(async:Async):Void {
+		// перезапуск приложения: connect-токены теряются, presence и слот живы
+		var client = makeClient();
+		var username = 'hx_${Std.int(Math.random() * 1000000)}';
+
+		newUser(client, username, () -> {
+			joinChat(client, room -> {
+				room.onJoin.add(e -> {
+					var sid = e.data.get("session_id");
+
+					// эмуляция перезапуска: у "мёртвого" приложения нет
+					// reconnection-токена — auto-reconnect не может начаться,
+					// слот на сервере живёт reconnect_ttl
+					room.reservation.reconnectionToken = null;
+
+					// не-согласованный обрыв (сеть "умерла" вместе с приложением)
+					haxe.Timer.delay(() -> room.connection.close(), 100);
+					haxe.Timer.delay(() -> {
+						// "новое приложение": те же учётные данные, ищем живую сессию
+						client.mySessions(sessions -> {
+							var found = Lambda.find(sessions, s -> s.roomId == room.roomId);
+							Assert.notNull(found);
+
+							client.resumeSession(room.roomId, res -> {
+								Assert.equals(room.roomId, res.roomId);
+								Assert.notNull(res.reconnectionToken);
+
+								var resumed = client.connectRoom(res);
+								resumed.onJoin.add(e2 -> {
+									// та же сессия — место в матче сохранено
+									Assert.equals(sid, e2.data.get("session_id"));
+									resumed.leave();
+									async.done();
+								});
+							}, err -> {
+								Assert.fail('resume failed: $err');
+								async.done();
+							});
+						}, err -> {
+							Assert.fail('mySessions failed: $err');
+							async.done();
+						});
+					}, 400);
+				});
+			});
+		});
+
+		async.setTimeout(15000);
+	}
+
+	function testGatewaySocketHealthSignals(async:Async):Void {
+		var client = makeClient();
+		client.useGateway = true;
+		client.gateway().keepAliveMs = 300; // быстрый первый RTT-замер
+
+		var drops = 0;
+		var restores = 0;
+		client.gateway().onSocketDrop.add(_ -> drops++);
+		client.gateway().onSocketRestore.add(_ -> restores++);
+
+		newUser(client, 'hx_${Std.int(Math.random() * 1000000)}', () -> {
+			joinChat(client, room -> {
+				var joins = 0;
+
+				room.onJoin.add(_ -> {
+					joins++;
+
+					if (joins == 1) {
+						haxe.Timer.delay(() -> {
+							Assert.isTrue(drops == 0 && restores == 0);
+
+							// обрыв общего сокета: один drop, потом один restore
+							client.gateway().connection.close();
+						}, 700);
+					} else if (joins == 2) {
+						// re-enter после восстановления сокета, сессия та же
+						Assert.equals(1, drops);
+						Assert.equals(1, restores);
+						Assert.isTrue(client.gateway().socketRtt != null);
+
+						room.leave();
+						async.done();
+					}
+				});
+			});
+		});
+
+		async.setTimeout(15000);
+	}
+
 	function testGatewayDedicatedMix(async:Async):Void {
 		// смешанный режим: одна комната на общем сокете, вторая на выделенном
 		var client = makeClient();

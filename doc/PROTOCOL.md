@@ -40,6 +40,8 @@ POST /api/matchmake/create/:room_name
 POST /api/matchmake/join/:room_name
 POST /api/matchmake/join_by_id/:room_id
 POST /api/matchmake/reconnect/:room_id
+POST /api/matchmake/resume/:room_id
+GET  /api/me/sessions
 ```
 
 Тело (необязательно): `{"options": {...}}` — ключи, объявленные в
@@ -69,6 +71,32 @@ POST /api/matchmake/reconnect/:room_id
 
 Ошибка: `404` с кодом `522` (токен невалиден/истёк — окно переподключения
 `reconnect_ttl`, по умолчанию 30 секунд, уже закрыто).
+
+### Сессии и восстановление после перезапуска
+
+После перезапуска приложения клиент теряет reconnection-токены (они в
+памяти), но сервер держит места `reconnect_ttl`. По Bearer-токену:
+
+```
+GET /api/me/sessions
+→ {"sessions": [{"room_id": "...", "room_name": "chat", "username": "ann"}]}
+```
+
+— комнаты, где пользователь онлайн (по presence; создаётся при WS-join,
+живёт, пока жива сессия, включая окно reconnect).
+
+```
+POST /api/matchmake/resume/:room_id        (тело пустое)
+→ {"room_id": "...", "session_id": "...", "reconnection_token": "..."}
+```
+
+— восстановление по identity пользователя (auth-данные брони): сервер
+находит reconnect-слот этого юзера в комнате и отдаёт его токен; далее
+обычный reconnect-флоу шага 2 (`WS /ws/:room_id?sessionId=…&reconnectionToken=…`
+или `ROOM_ENTER` с токеном на gateway). Работает только пока слот жив
+(транспорт мёртв); живую сессию (в т.ч. с другого устройства того же
+юзера) не перехватывает. Ошибки: `404` (`:not_found` — слота нет),
+`404` c `522` (комната не найдена).
 
 ### Листинг комнат
 

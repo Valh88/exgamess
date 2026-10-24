@@ -50,9 +50,11 @@ defmodule ExGamesWebWeb.Router do
     pipe_through [:api, :require_auth]
 
     get "/me", AuthController, :me
+    get "/me/sessions", AuthController, :sessions
 
     # частные маршруты — до обобщённого /matchmake/:method/:room_name
     post "/matchmake/reconnect/:room_id", MatchmakeController, :reconnect
+    post "/matchmake/resume/:room_id", MatchmakeController, :resume
     post "/matchmake/join_by_id/:room_id", MatchmakeController, :join_by_id
     post "/matchmake/:method/:room_name", MatchmakeController, :matchmake
     get "/rooms", RoomsController, :index

@@ -103,7 +103,13 @@ class RunIntegration {
 
 	static function start(endpoint:String, verifyCert:Bool):Void {
 		var runner = new Runner();
-		runner.addCase(new IntegrationTest(endpoint, verifyCert));
+
+		// фильтр по имени теста (regex): GAMESSA_FILTER=MySessions haxe …
+		var filter = Sys.getEnv("GAMESSA_FILTER");
+		if (filter != null)
+			runner.addCase(new IntegrationTest(endpoint, verifyCert), new EReg(filter, ""));
+		else
+			runner.addCase(new IntegrationTest(endpoint, verifyCert));
 
 		runner.onProgress.add(p -> {
 			for (a in p.result.assertations) {

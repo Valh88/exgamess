@@ -65,6 +65,25 @@ defmodule ExGamesWebWeb.MatchmakeController do
     {:error, "reconnection_token required"}
   end
 
+  @doc """
+  Восстановление сессии после потери reconnection-токена (перезапуск
+  приложения): находит reconnect-слот по identity пользователя (Bearer) и
+  отдаёт `session_id` + токен — далее обычное подключение
+  `WS /ws/:room_id?sessionId=…&reconnectionToken=…` (или `room_enter` с
+  токеном на gateway). Работает только пока слот жив (`reconnect_ttl`, 30с).
+  """
+  def resume(conn, %{"room_id" => room_id}) do
+    user_id = to_string(conn.assigns.current_user.id)
+
+    with {:ok, session_id, token} <- ExGames.Room.Server.reclaim(room_id, user_id) do
+      json(conn, %{
+        "room_id" => room_id,
+        "session_id" => session_id,
+        "reconnection_token" => token
+      })
+    end
+  end
+
   # user_id + username едут в auth-данные брони: ядро трекает presence
   # (ExGames.Presence) и показывает клиента в админке по этим полям
   defp auth_data(conn),

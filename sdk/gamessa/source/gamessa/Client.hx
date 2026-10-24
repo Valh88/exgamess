@@ -131,7 +131,63 @@ class Client {
 
 	/** `GET /api/me` — текущий пользователь. */
 	public function me(onSuccess:Dynamic->Void, onError:MatchMakeError->Void):Void {
-		http.get('$endpoint/api/me', res -> onSuccess(parseJson(res.body)), err -> onError(toError(err)));
+		reqGet('$endpoint/api/me', res -> onSuccess(parseJson(res.body)), err -> onError(toError(err)));
+	}
+
+	// ------------------------------------------------------------------
+	// HTTP с ретраями временных сбоев
+	// ------------------------------------------------------------------
+
+	/**
+		Максимум повторов HTTP-запроса при временной ошибке (сеть недоступна,
+		5xx, 429). 0 — выключено (по умолчанию, поведение прежнее). Постоянные
+		ошибки (прочие 4xx: неверные данные, авторизация, комната заполнена)
+		не повторяются никогда.
+	*/
+	public var httpRetries:Int = 0;
+
+	/** Стартовая задержка между повторами, мс (удваивается на каждую попытку). */
+	public var httpRetryDelayMs:Int = 200;
+
+	function reqGet(url:String, onSuccess:HttpResponse->Void, onError:HttpError->Void):Void {
+		withRetries(fail -> http.get(url, onSuccess, fail), onError);
+	}
+
+	function reqPost(url:String, body:String, onSuccess:HttpResponse->Void, onError:HttpError->Void):Void {
+		withRetries(fail -> http.post(url, body, onSuccess, fail), onError);
+	}
+
+	function reqPut(url:String, body:String, onSuccess:HttpResponse->Void, onError:HttpError->Void):Void {
+		withRetries(fail -> http.put(url, body, onSuccess, fail), onError);
+	}
+
+	function reqDel(url:String, onSuccess:HttpResponse->Void, onError:HttpError->Void):Void {
+		withRetries(fail -> http.del(url, onSuccess, fail), onError);
+	}
+
+	// Полностью асинхронно: ошибки HTTP-клиент доставляет колбэком (на sys —
+	// из фонового потока), исключения между потоками недопустимы — попытка
+	// получает свой fail, решение «повторить или сдаться» принимает он
+	function withRetries(doAttempt:(HttpError->Void)->Void, onGiveUp:HttpError->Void):Void {
+		doWithRetries(doAttempt, onGiveUp, 0);
+	}
+
+	function doWithRetries(doAttempt:(HttpError->Void)->Void, onGiveUp:HttpError->Void, tries:Int):Void {
+		doAttempt(err -> {
+			if (!transient(err) || tries >= httpRetries) {
+				onGiveUp(err);
+			} else {
+				var delay = httpRetryDelayMs * Std.int(Math.pow(2, tries));
+				haxe.Timer.delay(() -> doWithRetries(doAttempt, onGiveUp, tries + 1), delay);
+			}
+		});
+	}
+
+	/** Временная ли ошибка: сеть (без статуса), 5xx, 429. */
+	static function transient(err:HttpError):Bool {
+		if (err.status == null)
+			return true;
+		return err.status >= 500 || err.status == 429;
 	}
 
 	// ------------------------------------------------------------------
@@ -172,13 +228,44 @@ class Client {
 		}, onError);
 	}
 
+	/**
+		Живые сессии пользователя: комнаты, где он сейчас онлайн. Для экрана
+		«вернуться в матч?» после перезапуска приложения (токени reconnect
+		в памяти теряются); восстановление — `resumeSession`.
+	*/
+	public function mySessions(onSuccess:Array<LiveSession>->Void, onError:MatchMakeError->Void):Void {
+		reqGet('$endpoint/api/me/sessions', res -> handle(res, data -> {
+			var sessions:Array<LiveSession> = [];
+			var items:Array<Dynamic> = data.sessions == null ? [] : data.sessions;
+			for (item in items)
+				sessions.push(new LiveSession(item.room_id, item.room_name, item.username));
+			onSuccess(sessions);
+		}, onError), err -> onError(toError(err)));
+	}
+
+	/**
+		Восстановление сессии по identity пользователя (перезапуск приложения,
+		reconnection-токен потерян): сервер находит reconnect-слот и отдаёт
+		`session_id` + токен — результат как бронь с токеном, годится в
+		`connectRoom` (gateway войдёт `room_enter`-ом с токеном, выделенный
+		сокет — URL с reconnectionToken). Работает, пока жив слот на сервере
+		(`reconnect_ttl`, по умолчанию 30с после обрыва).
+	*/
+	public function resumeSession(roomId:String, onSuccess:SeatReservation->Void, onError:MatchMakeError->Void):Void {
+		post('/api/matchmake/resume/$roomId', {}, data -> {
+			var reservation = new SeatReservation(data.room_id, data.session_id);
+			reservation.reconnectionToken = data.reconnection_token;
+			onSuccess(reservation);
+		}, onError);
+	}
+
 	/** Листинг комнат заданного типа (или всех). */
 	public function getAvailableRooms(?roomName:String, onSuccess:Array<RoomListing>->Void, onError:MatchMakeError->Void):Void {
 		var url = '$endpoint/api/rooms';
 		if (roomName != null)
 			url += '?room_name=' + StringTools.urlEncode(roomName);
 
-		http.get(url, res -> handle(res, data -> {
+		reqGet(url, res -> handle(res, data -> {
 			var rooms:Array<RoomListing> = [];
 			var items:Array<Dynamic> = data.rooms == null ? [] : data.rooms;
 			for (item in items)
@@ -198,12 +285,12 @@ class Client {
 
 	/** Читает payload слота. */
 	public function getData(key:String, onSuccess:Dynamic->Void, onError:MatchMakeError->Void):Void {
-		http.get('$endpoint/api/saves/$key', res -> handle(res, data -> onSuccess(data.payload), onError), err -> onError(toError(err)));
+		reqGet('$endpoint/api/saves/$key', res -> handle(res, data -> onSuccess(data.payload), onError), err -> onError(toError(err)));
 	}
 
 	/** Список слотов пользователя (метаданные, без payload). */
 	public function listSaves(onSuccess:Array<SaveMeta>->Void, onError:MatchMakeError->Void):Void {
-		http.get('$endpoint/api/saves', res -> handle(res, data -> {
+		reqGet('$endpoint/api/saves', res -> handle(res, data -> {
 			var saves:Array<SaveMeta> = [];
 			var items:Array<Dynamic> = data.saves == null ? [] : data.saves;
 			for (item in items)
@@ -214,7 +301,7 @@ class Client {
 
 	/** Удаляет слот. */
 	public function deleteSave(key:String, onSuccess:Void->Void, onError:MatchMakeError->Void):Void {
-		http.del('$endpoint/api/saves/$key', res -> {
+		reqDel('$endpoint/api/saves/$key', res -> {
 			if (res.status < 200 || res.status >= 300)
 				onError(MatchMakeError.fromJson(res.status, res.body));
 			else
@@ -232,7 +319,7 @@ class Client {
 		if (limit != null)
 			url += '?limit=' + limit;
 
-		http.get(url, res -> handle(res, data -> {
+		reqGet(url, res -> handle(res, data -> {
 			var entries:Array<LeaderboardEntry> = [];
 			var items:Array<Dynamic> = data.entries == null ? [] : data.entries;
 			for (item in items)
@@ -311,7 +398,9 @@ class Client {
 		if (useGateway)
 			return gateway().channelFor(reservation);
 
-		return new gamessa.transport.WebSocketTransport(roomWsUrl(reservation.roomId, reservation.sessionId), verifyCert);
+		// токен есть только после resumeSession: тогда это reattach, а не новая бронь
+		return new gamessa.transport.WebSocketTransport(
+			roomWsUrl(reservation.roomId, reservation.sessionId, reservation.reconnectionToken), verifyCert);
 	}
 
 	/**
@@ -348,13 +437,13 @@ class Client {
 	}
 
 	function post(path:String, body:Dynamic, onData:Dynamic->Void, onError:MatchMakeError->Void):Void {
-		http.post('$endpoint$path', haxe.Json.stringify(body), res -> {
+		reqPost('$endpoint$path', haxe.Json.stringify(body), res -> {
 			handle(res, onData, onError);
 		}, err -> onError(toError(err)));
 	}
 
 	function put(path:String, body:Dynamic, onData:Dynamic->Void, onError:MatchMakeError->Void):Void {
-		http.put('$endpoint$path', haxe.Json.stringify(body), res -> {
+		reqPut('$endpoint$path', haxe.Json.stringify(body), res -> {
 			handle(res, onData, onError);
 		}, err -> onError(toError(err)));
 	}
