@@ -71,6 +71,10 @@ class ChatHx extends gamessa.script.ServerLogic<ChatState> {
 			// request-поток идёт в reply() — здесь эффектов нет
 			case Request(_, _, _):
 				return null;
+
+			// внутрикомнатные сообщения соседних логик — чату не интересны
+			case Info(_):
+				return null;
 		}
 	}
 

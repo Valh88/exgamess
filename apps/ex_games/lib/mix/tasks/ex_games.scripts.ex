@@ -10,7 +10,8 @@ defmodule Mix.Tasks.ExGames.Scripts do
       mix ex_games.scripts --schemas-only   # только схемы из существующих чанков
 
   Конвенция: `<app>/server_scripts/**/*.hx` — каждый `.hx` (рекурсивно),
-  наследующий `gamessa.script.ServerLogic`, → чанк
+  наследующий `gamessa.script.ServerLogic` (или собирающий бандл через
+  `gamessa.script.Composite.build`), → чанк
   `<app>/priv/lua/<относительный путь>/<Class>.lua` (зеркало дерева) +
   `<Class>.lua.schema.json`.
 
@@ -32,7 +33,12 @@ defmodule Mix.Tasks.ExGames.Scripts do
 
       if File.dir?(scripts_dir) do
         walk!(
-          %{root: root, lib_mode: lib_mode?, schemas_only: schemas_only?},
+          %{
+            root: root,
+            lib_mode: lib_mode?,
+            schemas_only: schemas_only?,
+            sdk_source: System.get_env("GAMESSA_SDK")
+          },
           scripts_dir,
           scripts_dir,
           ""
@@ -76,11 +82,17 @@ defmodule Mix.Tasks.ExGames.Scripts do
     :ok
   end
 
+  # Композитный бандл (несколько модулей одним чанком) — детектим раньше
+  # script?: файл бандла может упоминать ServerLogic в комментарии. Сборка
+  # та же (-main Class → чанк + merged-схема).
+  defp bundle?(content), do: String.contains?(content, "Composite.build")
+
   # ServerLogic-наследник (прямой или через Sync с @:rpc)
   @sync_regex ~r/extends\s+[\w.]*\bSync\b/
 
   defp script?(content) do
-    String.contains?(content, "ServerLogic") or Regex.match?(@sync_regex, content)
+    bundle?(content) or String.contains?(content, "ServerLogic") or
+      Regex.match?(@sync_regex, content)
   end
 
   defp build!(ctx, dir, class, out) do
@@ -88,6 +100,12 @@ defmodule Mix.Tasks.ExGames.Scripts do
 
     haxe_args =
       cond do
+        # GAMESSA_SDK — явный override: компилировать против указанного
+        # исходника SDK, даже если haxelib-линк есть (глобальный линк может
+        # указывать на другую копию репозитория с другим ScriptFn и т.п.)
+        ctx.sdk_source != nil ->
+          ["-cp", ctx.sdk_source]
+
         ctx.lib_mode ->
           ["-lib", "gamessa"]
 

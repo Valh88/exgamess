@@ -1,0 +1,16 @@
+{
+  "messages": [
+    "score",
+    "score_get"
+  ],
+  "state": {
+    "score": {
+      "points": "number",
+      "ticked": "number"
+    },
+    "ticker": {
+      "ticks": "number",
+      "unknown": "number"
+    }
+  }
+}

@@ -631,10 +631,27 @@ ChatHx.__lower = function(e)
       tmp = _hx_tab_array({[0]="unlock"}, 1);
     elseif (tmp1) == 5 then 
       local metadata = x[2];
-      tmp = _hx_tab_array({[0]="set_metadata", metadata}, 2); end;
+      tmp = _hx_tab_array({[0]="set_metadata", metadata}, 2);
+    elseif (tmp1) == 6 then 
+      local msg = x[2];
+      tmp = _hx_tab_array({[0]="notify_room", msg}, 2); end;
     _g:push(tmp);
   end;
   do return _g end;
+end
+ChatHx.__wire = function(inst,op,a,s) 
+  if (op == "init") then 
+    do return inst:init(a) end;
+  end;
+  if (op == "tick") then 
+    inst:tick(a, s);
+    do return nil end;
+  end;
+  local wire = __gamessa_script_ScriptWire.fromWire(op, a);
+  if (__gamessa_script_ScriptWire.isRequest(wire)) then 
+    do return inst:reply(wire, s) end;
+  end;
+  do return ChatHx.__lower(inst:call(wire, s)) end;
 end
 ChatHx.__callWire = function(fn,a,s) 
   local wire = __gamessa_script_ScriptWire.fromWire(fn, a);
@@ -694,6 +711,9 @@ ChatHx.prototype.call = function(self,fn,state)
     local _g = fn[2];
     local _g = fn[3];
     local _g = fn[4];
+    do return nil end;
+  elseif (tmp) == 4 then 
+    local _g = fn[2];
     do return nil end; end;
 end
 ChatHx.prototype.tick = function(self,_dt,_state) 
@@ -938,7 +958,7 @@ Std.int = function(x)
     do return _hx_bit_clamp(x) end;
   end;
 end
-_hxClasses["gamessa.script.Effect"] = { __ename__ = true, __constructs__ = _hx_tab_array({[0]="Broadcast","SendTo","Kick","Lock","Unlock","SetMetadata"},6)}
+_hxClasses["gamessa.script.Effect"] = { __ename__ = true, __constructs__ = _hx_tab_array({[0]="Broadcast","SendTo","Kick","Lock","Unlock","SetMetadata","NotifyRoom"},7)}
 __gamessa_script_Effect = _hxClasses["gamessa.script.Effect"];
 __gamessa_script_Effect.Broadcast = function(type,payload) local _x = _hx_tab_array({[0]="Broadcast",0,type,payload,__enum__=__gamessa_script_Effect}, 4); return _x; end 
 __gamessa_script_Effect.SendTo = function(sid,type,payload) local _x = _hx_tab_array({[0]="SendTo",1,sid,type,payload,__enum__=__gamessa_script_Effect}, 5); return _x; end 
@@ -948,12 +968,14 @@ __gamessa_script_Effect.Lock = _hx_tab_array({[0]="Lock",3,__enum__ = __gamessa_
 __gamessa_script_Effect.Unlock = _hx_tab_array({[0]="Unlock",4,__enum__ = __gamessa_script_Effect},2)
 
 __gamessa_script_Effect.SetMetadata = function(metadata) local _x = _hx_tab_array({[0]="SetMetadata",5,metadata,__enum__=__gamessa_script_Effect}, 3); return _x; end 
-_hxClasses["gamessa.script.ScriptFn"] = { __ename__ = true, __constructs__ = _hx_tab_array({[0]="Join","Leave","Message","Request"},4)}
+__gamessa_script_Effect.NotifyRoom = function(msg) local _x = _hx_tab_array({[0]="NotifyRoom",6,msg,__enum__=__gamessa_script_Effect}, 3); return _x; end 
+_hxClasses["gamessa.script.ScriptFn"] = { __ename__ = true, __constructs__ = _hx_tab_array({[0]="Join","Leave","Message","Request","Info"},5)}
 __gamessa_script_ScriptFn = _hxClasses["gamessa.script.ScriptFn"];
 __gamessa_script_ScriptFn.Join = function(sid,auth) local _x = _hx_tab_array({[0]="Join",0,sid,auth,__enum__=__gamessa_script_ScriptFn}, 4); return _x; end 
 __gamessa_script_ScriptFn.Leave = function(sid,reason) local _x = _hx_tab_array({[0]="Leave",1,sid,reason,__enum__=__gamessa_script_ScriptFn}, 4); return _x; end 
 __gamessa_script_ScriptFn.Message = function(type,sid,payload) local _x = _hx_tab_array({[0]="Message",2,type,sid,payload,__enum__=__gamessa_script_ScriptFn}, 5); return _x; end 
 __gamessa_script_ScriptFn.Request = function(type,sid,payload) local _x = _hx_tab_array({[0]="Request",3,type,sid,payload,__enum__=__gamessa_script_ScriptFn}, 5); return _x; end 
+__gamessa_script_ScriptFn.Info = function(msg) local _x = _hx_tab_array({[0]="Info",4,msg,__enum__=__gamessa_script_ScriptFn}, 3); return _x; end 
 
 __gamessa_script_ScriptWire.new = {}
 __gamessa_script_ScriptWire.__name__ = true
@@ -969,6 +991,9 @@ __gamessa_script_ScriptWire.fromWire = function(fn,args)
   end;
   if (fn == "request") then 
     do return __gamessa_script_ScriptFn.Request(a1, a2, a3) end;
+  end;
+  if (fn == "info") then 
+    do return __gamessa_script_ScriptFn.Info(a1) end;
   end;
   do return __gamessa_script_ScriptFn.Message((function() 
     local _hx_1
@@ -1311,6 +1336,8 @@ local _hx_static_init = function()
   ChatHx.HISTORY_MAX = 30;
   
   ChatHx.__stateLua = "{ history = { map = { n = \"number\", name = \"string\", sid = \"string\", text = \"string\" } }, seq = \"number\", users = { map = \"string\" }, version = \"number\" }";
+  
+  ChatHx.__stateSchema = _hx_o({__fields__={history=true,seq=true,users=true,version=true},history=_hx_o({__fields__={map=true},map=_hx_o({__fields__={n=true,name=true,sid=true,text=true},n="number",name="string",sid="string",text="string"})}),seq="number",users=_hx_o({__fields__={map=true},map="string"}),version="number"});
   
   
 end

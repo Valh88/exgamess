@@ -46,6 +46,7 @@ class ServerLogicBuilder
 		final concrete = stateType != null && !isTypeParam(stateType);
 
 		final classRef = cls.pack.length == 0 ? cls.name : "__" + cls.pack.join("_") + "_" + cls.name;
+		final instCt = TPath({pack: cls.pack, name: cls.name});
 
 		// __lower — на всех таргетах (клиент предсказывает эффекты);
 		// строится из enum'а Effect, а не захардкожено
@@ -58,11 +59,49 @@ class ServerLogicBuilder
 				public static var __stateLua(default, null):String = $v{stateLua};
 			}).fields[0]);
 
+		// Та же схема как Haxe-значение (свой рендер: синтаксис анонимных
+		// структур Haxe — с двоеточием, Lua-литерал — с '=') — для
+		// композитов: merged-схема бандла собирается структурно.
+		if (concrete)
+		{
+			fields.push((macro class
+				{
+					public static var __stateSchema(default, null):Dynamic = $e{typeToSchema(stateType, cls.pos)};
+				}).fields[0]);
+		}
+
+		// Публичный вход для gamessa.script.Composite (и тестов): развёртка
+		// init/tick/wire-вызова над ЧУЖИМ экземпляром — композит передаёт
+		// свой слайс состояния. Приватные init/call/reply/tick доступны,
+		// потому что метод генерируется в сам класс. op: "init" | "tick" |
+		// wire-fn ("join"/"leave"/"message"/"request"/тип кадра).
+		// На всех таргетах: юнит-тесты композита идут на interp; на клиенте
+		// метод мёртв (DCE вырезает — ссылок нет).
+		if (concrete)
+		{
+			fields.push((macro class
+				{
+					public static function __wire(inst:$instCt, op:String, a:Dynamic, s:Dynamic):Dynamic
+					{
+						if (op == "init")
+							return inst.init(a);
+						if (op == "tick")
+						{
+							inst.tick(a, s);
+							return null;
+						}
+						final wire:gamessa.script.ScriptFn = gamessa.script.ScriptWire.fromWire(op, a);
+						if (gamessa.script.ScriptWire.isRequest(wire))
+							return inst.reply(wire, s);
+						return __lower(inst.call(wire, s));
+					}
+				}).fields[0]);
+		}
+
 		if (lua && concrete)
 		{
 			cls.meta.add(":keep", [], cls.pos);
 
-			final instCt = TPath({pack: cls.pack, name: cls.name});
 			fields.push((macro class
 				{
 					static var __inst:$instCt;
@@ -291,6 +330,35 @@ class ServerLogicBuilder
 				'{ ${parts.join(", ")} }';
 			case _:
 				'"any"';
+		}
+	}
+
+	// Та же схема как Haxe-значение (анонимная структура с двоеточиями —
+	// Lua-литерал с '=' не парсится как Haxe-выражение)
+	static function typeToSchema(t:Type, pos:Position):Expr
+	{
+		final t = TypeTools.follow(t, true);
+		return switch (t)
+		{
+			case TInst(_.get() => {pack: [], name: "String"}, _):
+				macro "string";
+			case TAbstract(_.get() => {pack: [], name: "Int" | "Float"}, _):
+				macro "number";
+			case TAbstract(_.get() => {pack: [], name: "String"}, _):
+				macro "string";
+			case TAbstract(_.get() => {pack: [], name: "Bool"}, _):
+				macro "boolean";
+			case TAbstract(_.get() => {pack: ["haxe"], name: "DynamicAccess"}, [inner]):
+				{expr: EObjectDecl([{field: "map", expr: typeToSchema(inner, pos)}]), pos: pos};
+			case TInst(_.get() => {pack: [], name: "Array"}, [inner]):
+				{expr: EObjectDecl([{field: "list", expr: typeToSchema(inner, pos)}]), pos: pos};
+			case TAnonymous(_.get() => anon):
+				{
+					expr: EObjectDecl([for (f in anon.fields) {field: f.name, expr: typeToSchema(f.type, pos)}]),
+					pos: pos
+				};
+			case _:
+				macro "any";
 		}
 	}
 	#end
