@@ -69,6 +69,6 @@ class MLogic {
 		untyped __lua__("function M.init(a) return __hx_toplain(MLogic.init(a)) end");
 		untyped __lua__("function M.call(fn, a, s) return __hx_toplain(MLogic.call(fn, a, s)), __hx_toplain(s) end");
 		untyped __lua__("function M.tick(dt, s) MLogic.tick(dt, s); return nil, __hx_toplain(s) end");
-		untyped __lua__("M.schema = { messages = { 'add' } }");
+		untyped __lua__("M.schema = { messages = { 'add', 'echo' } }");
 	}
 }

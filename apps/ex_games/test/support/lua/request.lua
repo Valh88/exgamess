@@ -4,7 +4,9 @@
 M = {}
 
 M.schema = {
-  messages = { "ping" },
+  -- контракт моста: messages содержит и message-, и request-имена
+  -- (request-типы тонкого модуля берутся отсюда)
+  messages = { "ping", "answer" },
 }
 
 function M.init(_args)

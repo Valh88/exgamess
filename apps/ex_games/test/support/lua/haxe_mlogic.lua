@@ -578,7 +578,7 @@ MLogic.main = function()
   function M.init(a) return __hx_toplain(MLogic.init(a)) end;
   function M.call(fn, a, s) return __hx_toplain(MLogic.call(fn, a, s)), __hx_toplain(s) end;
   function M.tick(dt, s) MLogic.tick(dt, s); return nil, __hx_toplain(s) end;
-  M.schema = { messages = { 'add' } }
+  M.schema = { messages = { 'add', 'echo' } }
 end
 
 Math.new = {}

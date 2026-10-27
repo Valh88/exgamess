@@ -315,8 +315,9 @@ defmodule ExGames.RoomLogicsLuaTest do
   end
 
   test "Haxe-скрипт в комнате: интроспекция из M.schema, join-эффект, сообщение" do
-    # типы из M.schema Haxe-чанка (headless-прогон под шимами)
-    assert HaxeRoom.HaxeLogic.__message_types__() == ["add"]
+    # типы из M.schema Haxe-чанка (headless-прогон под шимами); контракт:
+    # messages содержит и message-, и request-имена ("echo" — request)
+    assert HaxeRoom.HaxeLogic.__message_types__() == ["add", "echo"]
     assert HaxeRoom.HaxeLogic.__message_wildcard__() == false
 
     {:ok, room_id} = Rooms.start(HaxeRoom.Game)
@@ -426,7 +427,7 @@ defmodule ExGames.RoomLogicsLuaTest do
   end
 
   # -------------------------------------------------------------------------
-  # Request-поток: wildcard-клейза моста → M.call("request", …)
+  # Request-поток: request-типы тонкого модуля из M.schema
   # -------------------------------------------------------------------------
 
   defmodule ReqLua.Logic do
@@ -440,9 +441,13 @@ defmodule ExGames.RoomLogicsLuaTest do
     def room_init(_options, _room), do: {:ok, nil}
   end
 
-  test "request-поток: интроспекция wildcard'а у тонкого модуля" do
-    assert ReqLua.Logic.__request_types__() == []
-    assert ReqLua.Logic.__request_wildcard__() == true
+  test "request-поток: request-типы тонкого модуля из M.schema" do
+    # контракт: M.schema.messages содержит и message-, и request-имена —
+    # request "answer" маршрутизируется в модуль, а не уходит wildcard'у
+    assert ReqLua.Logic.__request_types__() == ["ping", "answer"]
+
+    # схема есть — модуль не wildcard: чужие request'ы не перехватывает
+    assert ReqLua.Logic.__request_wildcard__() == false
   end
 
   test "мост: request через Lua-скрипт — значение-ответ клиенту" do
