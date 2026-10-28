@@ -34,3 +34,4 @@ erl_crash.dump
 sdk/gamessa/.gamessa_storage.json
 mix_pubsub_user0/
 apps/extract_pro
+.gamessa_storage.json

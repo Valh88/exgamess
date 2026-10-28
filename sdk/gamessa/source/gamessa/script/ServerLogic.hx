@@ -68,7 +68,8 @@ class ServerLogic<TState>
 	function reply(_fn:ScriptFn, _state:TState):Dynamic
 		return null;
 
-	/** Тик комнаты. Мутировать state; возврат не нужен. */
+	/** Тик комнаты. Мутировать state; возврат не нужен.
+	`_dt` — миллисекунды с прошлого тика (сервер: monotonic elapsed). */
 	function tick(_dt:Float, _state:TState):Void
 	{
 	}
