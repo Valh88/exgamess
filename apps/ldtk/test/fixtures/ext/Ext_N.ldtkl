@@ -1,0 +1,12 @@
+{
+  "layerInstances": [
+    {
+      "__type": "IntGrid",
+      "__identifier": "Collisions",
+      "__cWid": 1,
+      "__cHei": 1,
+      "__gridSize": 32,
+      "intGridCsv": [1]
+    }
+  ]
+}

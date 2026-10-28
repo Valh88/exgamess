@@ -1,0 +1,42 @@
+{
+  "jsonVersion": "1.5.3",
+  "externalLevels": false,
+  "levels": [
+    {
+      "identifier": "Mini_W",
+      "worldX": 0,
+      "worldY": 0,
+      "pxWid": 64,
+      "pxHei": 64,
+      "layerInstances": [
+        {
+          "__type": "IntGrid",
+          "__identifier": "Collisions",
+          "__cWid": 2,
+          "__cHei": 2,
+          "__gridSize": 32,
+          "intGridCsv": [1, 0, 0, 0]
+        }
+      ]
+    },
+    {
+      "identifier": "Mini_E",
+      "worldX": 64,
+      "worldY": 0,
+      "pxWid": 64,
+      "pxHei": 64,
+      "layerInstances": [
+        {
+          "__type": "IntGrid",
+          "__identifier": "Collisions",
+          "__cWid": 2,
+          "__cHei": 2,
+          "__gridSize": 32,
+          "intGrid": [
+            { "coordId": 3, "v": 2 }
+          ]
+        }
+      ]
+    }
+  ]
+}

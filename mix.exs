@@ -4,7 +4,7 @@ defmodule Exgamess.Umbrella.MixProject do
   def project do
     [
       apps_path: "apps",
-      apps: [:ex_games, :ex_games_account, :ex_games_web, :arena_example, :extract_pro],
+      apps: [:ex_games, :ex_games_account, :ex_games_web, :arena_example, :ldtk, :extract_pro],
       version: "0.1.0",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
