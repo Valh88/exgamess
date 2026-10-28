@@ -203,11 +203,18 @@ M.schema = { messages = __hx_toplain(__gamessa_script_Composite.__messagesWire()
 	}
 
 	// wire-fn аргументы: join/leave = [sid, X]; message/request = [type, sid, payload];
-	// info = [msg]
+	// info = [msg]. Ключи — ЧИСЛОВЫЕ на lua: ScriptWire.get читает args[i]
+	// числом (мост кодирует список аргументов 1-based таблицей);
+	// Reflect.setField писал бы строковые "1".."3" — на Lua они мимо.
 	static function wireArgs(wire:ScriptFn):Dynamic
 	{
 		final args:Dynamic = {};
-		final set = (i:Int, v:Dynamic) -> Reflect.setField(args, Std.string(i), v);
+		final set = (i:Int, v:Dynamic) ->
+			#if lua
+			(untyped args[i] = v)
+			#else
+			Reflect.setField(args, Std.string(i), v)
+			#end;
 		switch (wire)
 		{
 			case ScriptFn.Join(sid, x):

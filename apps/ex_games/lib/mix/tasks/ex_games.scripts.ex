@@ -19,6 +19,12 @@ defmodule Mix.Tasks.ExGames.Scripts do
   (рекомендуется: `haxelib dev gamessa <путь к SDK>`; зависимости либы
   haxelib подтягивает сам); без haxelib — fallback `-cp` (findUp
   `<root>/sdk/gamessa/source` или env GAMESSA_SDK).
+
+  Дополнительные `-cp` для скриптов потребителя (общий код игры и т.п.) —
+  env `GAMESSA_SHARED` (путь; относительные разворачиваются от корня
+  скриптов):
+
+      GAMESSA_SHARED=../extract_pro/../../shared/src mix ex_games.scripts
   """
 
   use Mix.Task
@@ -118,6 +124,16 @@ defmodule Mix.Tasks.ExGames.Scripts do
       |> Kernel.++([
         "-cp",
         dir,
+      ])
+      |> Kernel.++(case System.get_env("GAMESSA_SHARED") do
+        # Дополнительный -cp ПОТРЕБИТЕЛЯ скриптов (например, общий код игры
+        # shared/src для бандла с игровыми модулями). Библиотека ничего не
+        # знает о раскладке проектов — путь задаётся явно при сборке:
+        # GAMESSA_SHARED=../extract_pro/../../shared/src mix ex_games.scripts
+        nil -> []
+        cp -> ["-cp", Path.expand(cp, ctx.root)]
+      end)
+      |> Kernel.++([
         "-main",
         class,
         "-D",

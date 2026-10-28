@@ -3,6 +3,7 @@ package;
 import gamessa.script.Composite;
 import gamessa.script.Effect;
 import gamessa.script.ScriptFn;
+import haxe.DynamicAccess;
 
 /**
 	Композитный бандл: два модуля (ServerLogic-наследника) в ОДНОМ чанке
@@ -28,7 +29,7 @@ import gamessa.script.ScriptFn;
 	`Sync.stateKey` режет свою ветку.
 */
 
-typedef ScoreState = {points:Int, ticked:Int};
+typedef ScoreState = {points:Int, ticked:Int, joins:DynamicAccess<Bool>};
 
 class Score extends gamessa.script.ServerLogic<ScoreState> {
 	public static inline var VERSION = 1;
@@ -37,10 +38,16 @@ class Score extends gamessa.script.ServerLogic<ScoreState> {
 		return ["score", "score_get"];
 
 	override function init(_args:Dynamic):ScoreState
-		return {points: 0, ticked: 0};
+		return {points: 0, ticked: 0, joins: {}};
 
 	override function call(fn:ScriptFn, state:ScoreState):Array<Effect> {
 		return switch (fn) {
+			// sid приходит из wire-аргументов join (на Lua — числовые ключи;
+			// регресс-покрытие диспетчеризации Composite/ScriptWire)
+			case Join(sid, _):
+				state.joins[sid] = true;
+				null;
+
 			case Message("score", sid, payload):
 				state.points += payload.add;
 				[Broadcast("score", {sid: sid, points: state.points, v: VERSION})];

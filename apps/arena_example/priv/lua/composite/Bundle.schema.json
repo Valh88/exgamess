@@ -5,6 +5,9 @@
   ],
   "state": {
     "score": {
+      "joins": {
+        "map": "boolean"
+      },
       "points": "number",
       "ticked": "number"
     },

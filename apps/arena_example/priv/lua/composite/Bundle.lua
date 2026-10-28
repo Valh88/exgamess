@@ -659,14 +659,20 @@ M = {}
 function M.init(a) return __hx_toplain(__logic_inst:init(a)) end
 function M.call(fn, a, s) return __hx_toplain(Score.__callWire(fn, a, s)), __hx_toplain(s) end
 function M.tick(dt, s) __logic_inst:tick(dt, s); return nil, __hx_toplain(s) end
-M.schema = { messages = __hx_toplain(Score.messages()), state = { points = "number", ticked = "number" } }
+M.schema = { messages = __hx_toplain(Score.messages()), state = { joins = { map = "boolean" }, points = "number", ticked = "number" } }
 end
 Score.prototype = _hx_e();
 Score.prototype.init = function(self,_args) 
-  do return _hx_o({__fields__={points=true,ticked=true},points=0,ticked=0}) end
+  do return _hx_o({__fields__={points=true,ticked=true,joins=true},points=0,ticked=0,joins=_hx_e()}) end
 end
 Score.prototype.call = function(self,fn,state) 
-  if (fn[1] == 2) then 
+  local tmp = fn[1];
+  if (tmp) == 0 then 
+    local _g = fn[3];
+    local sid = fn[2];
+    state.joins[sid] = true;
+    do return nil end;
+  elseif (tmp) == 2 then 
     if (fn[2] == "score") then 
       local sid = fn[3];
       local payload = fn[4];
@@ -675,10 +681,8 @@ Score.prototype.call = function(self,fn,state)
       do return _hx_tab_array({[0]=__gamessa_script_Effect.Broadcast("score", _hx_o({__fields__={sid=true,points=true,v=true},sid=sid,points=state.points,v=1}))}, 1) end;
     else
       do return nil end;
-    end;
-  else
-    do return nil end;
-  end;
+    end;else
+  do return nil end; end;
 end
 Score.prototype.reply = function(self,fn,state) 
   if (fn[1] == 3) then 
@@ -1314,8 +1318,7 @@ end
 __gamessa_script_Composite.wireArgs = function(wire) 
   local args = _hx_e();
   local set = function(i,v) 
-    local field = Std.string(i);
-    args[field] = v;
+    args[i] = v do return args[i] end;
   end;
   local tmp = wire[1];
   if (tmp) == 0 then 
@@ -1764,9 +1767,9 @@ local _hx_static_init = function()
   String.__name__ = "String";
   Array.__name__ = "Array";Score.VERSION = 1;
   
-  Score.__stateLua = "{ points = \"number\", ticked = \"number\" }";
+  Score.__stateLua = "{ joins = { map = \"boolean\" }, points = \"number\", ticked = \"number\" }";
   
-  Score.__stateSchema = _hx_o({__fields__={points=true,ticked=true},points="number",ticked="number"});
+  Score.__stateSchema = _hx_o({__fields__={joins=true,points=true,ticked=true},joins=_hx_o({__fields__={map=true},map="boolean"}),points="number",ticked="number"});
   
   Ticker.__stateLua = "{ ticks = \"number\", unknown = \"number\" }";
   
