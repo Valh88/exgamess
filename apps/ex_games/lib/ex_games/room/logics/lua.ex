@@ -480,7 +480,10 @@ defmodule ExGames.Room.Logics.Lua do
       Map.get(options, :lua_state_key) || Map.get(options, "lua_state_key") ||
         Map.get(options, :state_key) || Map.get(options, "state_key")
 
-    [script: script, args: List.wrap(args), haxe: haxe?]
+    # БЕЗ List.wrap: адаптер сам оборачивает opts[:args] в один Lua-аргумент
+    # (`call_m(lua, "init", [args])`) — обёртка здесь давала M.init массив
+    # [args] вместо самого args (Reflect.field(args, "level") -> nil).
+    [script: script, args: args, haxe: haxe?]
     |> put_option(options, :state_key, state_key)
     |> put_limit(options, :max_instructions)
     |> put_limit(options, :max_call_depth)

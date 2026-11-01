@@ -36,7 +36,10 @@ defmodule ExGames.GameLogic.Adapters.Lua.Shims do
     |> Lua.set!(["__hx_utf8", "char"], fn codes ->
       codes |> Enum.map(&<<&1::utf8>>) |> IO.iodata_to_binary()
     end)
-    |> Lua.set!(["__hx_utf8", "byte"], fn [s, i] -> :binary.at(s, i - 1) end)
+    |> Lua.set!(["__hx_utf8", "byte"], fn [s, i] ->
+      # вне диапазона — nil (семантика charCodeAt), а не ArgumentError
+      if i >= 1 && i <= String.length(s), do: :binary.at(s, i - 1)
+    end)
     |> Lua.set!(["__hx_utf8", "sub"], fn [s, i, j] -> utf8_sub(s, i, j) end)
     |> Lua.set!(["__hx_utf8", "find"], fn [s, needle, init, _plain] ->
       utf8_find(s, needle, init)
@@ -64,6 +67,12 @@ defmodule ExGames.GameLogic.Adapters.Lua.Shims do
         if name == "lua-utf8" then return __hx_utf8 end
         if name == "bit32" or name == "bit" then return bit32 end
         error("require blocked in sandbox: " .. tostring(name))
+      end
+
+      -- Lua 5.3+ убрал math.atan2 (стал math.atan(y, x)), а Haxe-Lua
+      -- компилирует Math.atan2 -> math.atan2: вернуть на место.
+      if math.atan2 == nil then
+        math.atan2 = function(y, x) return math.atan(y, x) end
       end
 
       -- Haxe-значения → plain-таблицы (контракт документов моста):
@@ -102,7 +111,9 @@ defmodule ExGames.GameLogic.Adapters.Lua.Shims do
     end
   end
 
-  # lua-utf8 find (plain): {start, end} в символах или nil
+  # lua-utf8 find (plain): два значения {start, end} в символах или nil.
+  # Колбэк обязан вернуть ЗАКОДИРОВАННЫЕ значения: список из двух чисел =
+  # два Lua-возврата (кортеж {:ok, _} — не валидное закодированное).
   defp utf8_find(s, needle, init) do
     prefix_len = max(init - 1, 0)
     tail = String.slice(s, prefix_len..-1//1)
@@ -110,7 +121,7 @@ defmodule ExGames.GameLogic.Adapters.Lua.Shims do
     case :binary.match(tail, needle) do
       {byte_pos, _len} ->
         char_pos = String.length(String.slice(tail, 0..(byte_pos - 1)//1)) + prefix_len + 1
-        {:ok, [char_pos, char_pos + String.length(needle) - 1]}
+        [char_pos, char_pos + String.length(needle) - 1]
 
       :nomatch ->
         nil
